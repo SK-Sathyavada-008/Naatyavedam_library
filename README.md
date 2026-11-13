@@ -1,4 +1,4 @@
-# Naatyavedam Library 
+# Naatyavedam Library (నాట్యవేదం లైబ్రరీ)
 
 **Naatyavedam Library** is a production-quality, mobile-first Progressive Web Application (PWA) designed for an Indian classical dance (**Kuchipudi**) school. The dance teacher and approved students collaboratively maintain one shared collection of dance music for class rehearsals, performances, and personal practice.
 
@@ -13,42 +13,44 @@
 ---
 
 ## Phase 2 — Local Music Library with Dexie.js (Completed)
+- IndexedDB database (`NaatyavedamLibraryDB`) with raw binary `Blob` storage (never Base64).
+- Audio file importer supporting MP3, M4A, WAV, AAC, OGG, OPUS, FLAC.
+- Real HTML5 audio playback with leak-free `URL.createObjectURL` / `URL.revokeObjectURL` lifecycle management.
+- Rehearsal tempo multiplier (`0.8x` to `1.25x`), seek scrubber, repeat loop, and 10s skip/rewind.
 
-This phase establishes the offline-first IndexedDB storage, song file importer, and real audio playback engine.
+---
 
-### 1. IndexedDB Architecture (Dexie.js)
-Database Name: `NaatyavedamLibraryDB`
-Tables:
-- **`songs`**: Stores song metadata (`id`, `title`, `originalFilename`, `fileType`, `fileSize`, `duration`, `createdAt`, `updatedAt`, `isFavorite`, `isLocalAvailable`, `syncStatus`, `category`, `ragam`, `talam`, `composer`, `isDeleted`, `deletedAt`).
-- **`audioBlobs`**: Stores raw binary `Blob` objects natively in IndexedDB (**never Base64**).
-- **`favorites`**: Tracks favorited tracks.
-- **`downloadInfo`**: Local availability and offline cache state.
-- **`pendingOperations`**: Queue for future cloud synchronization actions.
-- **`appSettings`**: Local key-value store for user sessions and preferences.
+## Phase 3 — Search and Library Experience (Completed)
 
-### 2. Audio Importer
-- **Single & Multiple File Import**: Via device/phone native file picker (`<input type="file" multiple accept="audio/*" />`).
-- **Supported Formats**: MP3, M4A, WAV, AAC, OGG, OPUS, FLAC.
-- **Duration Extraction**: Extracted via `Audio` metadata in the browser.
-- **Non-Destructive**: Original phone files remain 100% untouched; only a binary copy is stored in IndexedDB.
-- **Import Progress & Error States**: Displays live importing progress and friendly error messages for unsupported or corrupted files.
+This phase introduces client-side offline fuzzy search with Fuse.js, matched-text highlighting, a multi-select mode, and synchronized player navigation.
 
-### 3. Functional Audio Player
-- Real audio playback powered by HTML5 Audio from IndexedDB Blobs.
-- Object URL lifecycle management (`URL.createObjectURL` and `URL.revokeObjectURL`) to eliminate memory leaks.
-- Play, pause, seek (scrubber), forward 10s, rewind 10s, previous track, next track.
-- Rehearsal tempo cycling (`0.8x`, `0.9x`, `1.0x`, `1.1x`, `1.25x`) for Kuchipudi practice.
-- Single track loop / repeat mode for continuous Korvai rehearsal.
-- Graceful missing-audio and playback-error handling.
-- Integrated floating `MiniPlayer` and full-screen `PlayerPage`.
+### 1. Offline Fuzzy Search with Fuse.js
+- Configured with balanced threshold (`0.38`) and weighted keys (`title: 0.5`, `originalFilename: 0.25`, `category: 0.15`, `ragam: 0.1`).
+- **Typo Tolerance**: Handles missing letters and typos (e.g., searching `Krshna` matches `Krishna Shabdam`).
+- **Partial Matching**: Prefix and substring matching (e.g., `Krishna Shab`, `Shab`).
+- **Word Order Independence**: Multi-token algorithm supports inverted queries (e.g., `Shabdam Krishna`).
+- **Original Filename Search**: Matches phone filenames (e.g. `shankarabharanam.mp3`).
+- **100% Offline**: Runs purely in the browser against IndexedDB metadata without internet.
 
-### 4. Library Management
-- **Rename Display Title**: Updates `title` in DB without touching `originalFilename`.
-- **Delete / Recovery Bin**: Soft-deletes tracks with full restore capability.
-- **Favorites**: One-tap toggle with persistence.
-- **Sorting**: By Recently Added, Title (A–Z), Title (Z–A), Longest First, Shortest First.
-- **Search**: Real-time filtering by title, Ragam, Talam, and category.
-- **Sample Repertoire Generator**: One-click synthesis of genuine classical WAV audio blobs for testing without needing phone file transfers.
+### 2. Search UI & Text Highlighting
+- Prominent search bar with instant reactive filtering as the user types.
+- One-tap clear search button (`X`).
+- Matched text highlighting via `<HighlightedText>` with subtle sage accents.
+- Friendly no-results state with one-click filter reset.
+
+### 3. Multi-Select & Bulk Operations
+- Enter multi-select mode via the **"Select"** button.
+- Select individual songs or tap **"Select All"** / **"Deselect All"**.
+- Contextual selection action bar:
+  - **Bulk Favorite / Unfavorite**: Toggles favorite status for all selected songs.
+  - **Bulk Delete**: Prompts a confirmation modal before moving selected songs to the Recovery Bin.
+  - **Selected Count**: Displays exact count of active selections.
+  - **Clean UI**: Disappears completely when leaving selection mode to keep everyday browsing minimal.
+
+### 4. Player Queue Synchronization
+- Next/Previous controls in both the floating `MiniPlayer` and full-screen `PlayerPage` dynamically follow the **active filtered and sorted song list**.
+- Prominent playing badge and active border highlight in the library so the current track is instantly recognizable.
+- Playback continues seamlessly across all screen navigations.
 
 ---
 
@@ -75,15 +77,17 @@ Naatyavedam_library/
 │   │       ├── Badge.tsx
 │   │       ├── Button.tsx
 │   │       ├── Card.tsx
+│   │       ├── HighlightedText.tsx# Fuse match highlighter
 │   │       ├── Input.tsx
 │   │       └── Modal.tsx
 │   ├── hooks/
-│   │   └── useAudioPlayer.ts      # Audio engine hook with object URL cleanup
+│   │   └── useAudioPlayer.ts      # Audio engine hook with queue synchronization
 │   ├── services/
-│   │   ├── db.ts                  # Dexie.js database & table operations
+│   │   ├── db.ts                  # Dexie.js database & bulk operations
+│   │   ├── fuzzySearch.ts         # Fuse.js offline fuzzy search engine
 │   │   └── audioImporter.ts       # Audio validation, duration extraction & import
 │   ├── pages/
-│   │   ├── LibraryPage.tsx        # Main library with sorting, import & search
+│   │   ├── LibraryPage.tsx        # Main library with search, multi-select & filters
 │   │   ├── LoginPage.tsx          # User sign-in
 │   │   ├── PlayerPage.tsx         # Dedicated rehearsal player
 │   │   ├── RegisterPage.tsx       # Student registration
@@ -100,7 +104,8 @@ Naatyavedam_library/
 │   ├── main.tsx                   # Entry point & PWA service worker register
 │   └── vite-env.d.ts              # Vite & PWA type declarations
 ├── tests/
-│   └── importer.test.js           # Unit tests for import & audio generation
+│   ├── importer.test.js           # Unit tests for import & audio generation
+│   └── search.test.js             # Unit tests for Fuse.js fuzzy search queries
 ├── index.html
 ├── package.json
 ├── tailwind.config.js
@@ -112,7 +117,7 @@ Naatyavedam_library/
 
 ## Running Locally & Testing
 
-### 1. Run Unit Tests
+### 1. Run Unit Tests (11 Tests)
 ```bash
 npm test
 ```
