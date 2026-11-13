@@ -23,26 +23,81 @@ export type DanceCategory =
   | 'Practice / Talam'
   | 'Other';
 
+export type SyncStatus =
+  | 'local_only'
+  | 'pending_upload'
+  | 'synced'
+  | 'pending_update'
+  | 'pending_delete';
+
 export interface Song {
   id: string;
   title: string;
+  originalFilename: string;
+  fileType: string;
+  fileSize: number; // in bytes
+  duration: number | null; // in seconds, when available
+  createdAt: string; // ISO date added
+  updatedAt: string; // ISO last modified date
+  isFavorite: boolean;
+  isLocalAvailable: boolean;
+  syncStatus: SyncStatus;
+
+  // Classical Dance metadata (optional/customizable)
   ragam?: string;
   talam?: string;
   composer?: string;
-  category: DanceCategory;
-  duration: number; // in seconds
-  fileSize: number; // in bytes
-  fileName: string;
-  mimeType: string;
-  audioUrl?: string;
-  uploadedBy: string;
-  uploadedByName: string;
-  createdAt: string;
-  updatedAt: string;
-  isFavorite: boolean;
-  isDownloaded: boolean;
+  category?: DanceCategory | string;
+
+  // Deletion / Recovery bin support
   isDeleted: boolean;
   deletedAt?: string;
+
+  // Legacy / download status compatibility
+  isDownloaded?: boolean;
+  fileName?: string;
+  mimeType?: string;
+  uploadedBy?: string;
+  uploadedByName?: string;
+}
+
+export interface AudioBlobRecord {
+  id: string; // songId
+  songId: string;
+  blob: Blob;
+  mimeType: string;
+  fileSize: number;
+  createdAt: string;
+}
+
+export interface FavoriteRecord {
+  id: string;
+  songId: string;
+  createdAt: string;
+}
+
+export interface DownloadInfoRecord {
+  id: string;
+  songId: string;
+  isDownloaded: boolean;
+  downloadedAt: string;
+  fileSize: number;
+}
+
+export interface PendingOperation {
+  id: string;
+  type: 'UPLOAD' | 'RENAME' | 'DELETE' | 'RESTORE' | 'FAVORITE';
+  songId: string;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  status: 'pending' | 'processing' | 'failed';
+  retryCount: number;
+}
+
+export interface AppSettingRecord {
+  key: string;
+  value: unknown;
+  updatedAt: string;
 }
 
 export interface PlayerState {
@@ -53,6 +108,8 @@ export interface PlayerState {
   volume: number;
   isLooping: boolean;
   playbackRate: number;
+  isLoadingAudio: boolean;
+  audioError: string | null;
 }
 
 export type AppView =
@@ -63,7 +120,7 @@ export type AppView =
   | 'player'
   | 'settings';
 
-export type NavigationTab = 'library' | 'favorites' | 'player' | 'settings';
+export type SortOption = 'title-asc' | 'title-desc' | 'recent' | 'duration-desc' | 'duration-asc';
 
 export interface ActivityLogEntry {
   id: string;

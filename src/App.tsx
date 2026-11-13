@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { AppLayout } from './components/layout/AppLayout';
 import { WelcomePage } from './pages/WelcomePage';
 import { LoginPage } from './pages/LoginPage';
@@ -8,26 +8,78 @@ import { PlayerPage } from './pages/PlayerPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { AppView, Song, UserProfile, UserRole, ActivityLogEntry } from './types';
 import {
-  SAMPLE_KUCHIPUDI_SONGS,
-  MOCK_TEACHER_USER,
-  MOCK_STUDENT_USER,
-  SAMPLE_ACTIVITY_LOGS,
-} from './data/mockDanceMusic';
+  getLocalSongs,
+  getRecoveryBinSongs,
+  toggleSongFavorite,
+  renameSong,
+  deleteLocalSong,
+  restoreLocalSong,
+  saveSongWithBlob,
+  getAppSetting,
+  setAppSetting,
+} from './services/db';
+import { importAudioFiles } from './services/audioImporter';
+import { useAudioPlayer } from './hooks/useAudioPlayer';
+import { generateClassicalMelodyWav } from './utils/audioGenerator';
+import { MOCK_TEACHER_USER, MOCK_STUDENT_USER } from './data/mockDanceMusic';
 
 export const App: React.FC = () => {
-  // Navigation & Authentication state (Temporary Phase 1 development state)
+  // Navigation & Authentication state
   const [currentView, setCurrentView] = useState<AppView>('welcome');
   const [user, setUser] = useState<UserProfile | null>(null);
 
-  // Music Library state
-  const [songs, setSongs] = useState<Song[]>(SAMPLE_KUCHIPUDI_SONGS);
-  const [currentSong, setCurrentSong] = useState<Song | null>(SAMPLE_KUCHIPUDI_SONGS[0]);
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>(SAMPLE_ACTIVITY_LOGS);
+  // IndexedDB Data State
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [deletedSongs, setDeletedSongs] = useState<Song[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [isDbInitialized, setIsDbInitialized] = useState<boolean>(false);
 
-  // Network Connectivity state
+  // Import State
+  const [importProgress, setImportProgress] = useState<{
+    current: number;
+    total: number;
+    currentFileName: string;
+  } | null>(null);
+  const [importFailures, setImportFailures] = useState<{ fileName: string; reason: string }[]>([]);
+
+  // Connectivity
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
+  // Load songs & recovery bin from IndexedDB
+  const refreshLibraryFromDB = useCallback(async () => {
+    try {
+      const activeSongs = await getLocalSongs();
+      const binSongs = await getRecoveryBinSongs();
+      setSongs(activeSongs);
+      setDeletedSongs(binSongs);
+    } catch (err) {
+      console.error('Failed to load songs from IndexedDB:', err);
+    }
+  }, []);
+
+  // Audio Player Hook (Playing REAL audio from IndexedDB)
+  const player = useAudioPlayer(songs, (newSong) => {
+    player.playSong(newSong);
+  });
+
+  // Initial load from IndexedDB and persistent user session
+  useEffect(() => {
+    async function init() {
+      // 1. Restore saved user session if exists
+      const savedUser = await getAppSetting<UserProfile | null>('currentUser', null);
+      if (savedUser) {
+        setUser(savedUser);
+        setCurrentView('library');
+      }
+
+      // 2. Load songs from Dexie
+      await refreshLibraryFromDB();
+      setIsDbInitialized(true);
+    }
+    init();
+  }, [refreshLibraryFromDB]);
+
+  // Online / offline listeners
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -42,13 +94,14 @@ export const App: React.FC = () => {
   }, []);
 
   // Quick Demo / Local Login Handler
-  const handleQuickLogin = (role: UserRole) => {
+  const handleQuickLogin = async (role: UserRole) => {
     const profile = role === 'TEACHER' ? MOCK_TEACHER_USER : MOCK_STUDENT_USER;
     setUser(profile);
+    await setAppSetting('currentUser', profile);
     setCurrentView('library');
   };
 
-  const handleLoginSuccess = (role: UserRole, username: string) => {
+  const handleLoginSuccess = async (role: UserRole, username: string) => {
     const profile: UserProfile = {
       id: role === 'TEACHER' ? 'teacher-001' : 'student-001',
       username,
@@ -58,164 +111,167 @@ export const App: React.FC = () => {
       createdAt: new Date().toISOString(),
     };
     setUser(profile);
+    await setAppSetting('currentUser', profile);
     setCurrentView('library');
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
     setUser(null);
-    setIsPlaying(false);
+    await setAppSetting('currentUser', null);
+    player.pause();
     setCurrentView('welcome');
   };
 
-  const handleTogglePlay = () => {
-    if (!currentSong && songs.length > 0) {
-      setCurrentSong(songs[0]);
-      setIsPlaying(true);
-      return;
+  // Seed sample real playable classical audio blobs for immediate testing
+  const handleLoadSampleRepertoire = async () => {
+    setImportProgress({
+      current: 1,
+      total: 3,
+      currentFileName: 'Synthesizing Kalyani Jatiswaram Practice WAV...',
+    });
+
+    try {
+      // 1. Kalyani Jatiswaram (A3, C#4, E4, G#4)
+      const blob1 = generateClassicalMelodyWav(16, [220, 277.18, 329.63, 415.3]);
+      const song1: Song = {
+        id: `sample_jati_${Date.now()}`,
+        title: 'Kalyani Jatiswaram (Practice Speed)',
+        originalFilename: 'kalyani_jatiswaram_practice.wav',
+        fileType: 'audio/wav',
+        fileSize: blob1.size,
+        duration: 16,
+        createdAt: new Date(Date.now() - 3600000).toISOString(),
+        updatedAt: new Date(Date.now() - 3600000).toISOString(),
+        isFavorite: true,
+        isLocalAvailable: true,
+        syncStatus: 'local_only',
+        ragam: 'Kalyani',
+        talam: 'Rupaka',
+        composer: 'Tanjore Quartet',
+        category: 'Jatiswaram',
+        isDeleted: false,
+      };
+      await saveSongWithBlob(song1, blob1);
+
+      setImportProgress({
+        current: 2,
+        total: 3,
+        currentFileName: 'Synthesizing Mohanam Tanpura Drone WAV...',
+      });
+
+      // 2. Mohanam Drone (A3, C#4, E4, F#4)
+      const blob2 = generateClassicalMelodyWav(20, [220, 277.18, 329.63, 370]);
+      const song2: Song = {
+        id: `sample_drone_${Date.now() + 1}`,
+        title: 'Mohanam Tanpura Drone (Sa-Pa-Sa)',
+        originalFilename: 'mohanam_tanpura_drone.wav',
+        fileType: 'audio/wav',
+        fileSize: blob2.size,
+        duration: 20,
+        createdAt: new Date(Date.now() - 7200000).toISOString(),
+        updatedAt: new Date(Date.now() - 7200000).toISOString(),
+        isFavorite: true,
+        isLocalAvailable: true,
+        syncStatus: 'local_only',
+        ragam: 'Mohanam',
+        talam: 'Adi',
+        category: 'Practice / Talam',
+        isDeleted: false,
+      };
+      await saveSongWithBlob(song2, blob2);
+
+      setImportProgress({
+        current: 3,
+        total: 3,
+        currentFileName: 'Synthesizing Manduka Shabdam Chime WAV...',
+      });
+
+      // 3. Manduka Shabdam (A3, D4, E4)
+      const blob3 = generateClassicalMelodyWav(14, [220, 293.66, 329.63]);
+      const song3: Song = {
+        id: `sample_shabdam_${Date.now() + 2}`,
+        title: 'Manduka Shabdam (The Frog Legend)',
+        originalFilename: 'manduka_shabdam_gajendra.wav',
+        fileType: 'audio/wav',
+        fileSize: blob3.size,
+        duration: 14,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        isFavorite: false,
+        isLocalAvailable: true,
+        syncStatus: 'local_only',
+        ragam: 'Ragamalika',
+        talam: 'Misra Chapu',
+        category: 'Shabdam',
+        isDeleted: false,
+      };
+      await saveSongWithBlob(song3, blob3);
+
+      await refreshLibraryFromDB();
+    } catch (err) {
+      console.error('Failed to load demo repertoire:', err);
+    } finally {
+      setImportProgress(null);
     }
-    setIsPlaying((prev) => !prev);
   };
 
-  const handlePlaySong = (song: Song) => {
-    setCurrentSong(song);
-    setIsPlaying(true);
-  };
+  // Import files from user's phone / computer
+  const handleImportFiles = async (files: FileList | File[]) => {
+    setImportFailures([]);
+    const result = await importAudioFiles(files, (current, total, fileName) => {
+      setImportProgress({ current, total, currentFileName: fileName });
+    });
 
-  const handleNextSong = () => {
-    if (!currentSong) return;
-    const activeList = songs.filter((s) => !s.isDeleted);
-    const currentIndex = activeList.findIndex((s) => s.id === currentSong.id);
-    if (currentIndex !== -1) {
-      const nextIndex = (currentIndex + 1) % activeList.length;
-      setCurrentSong(activeList[nextIndex]);
-      setIsPlaying(true);
+    setImportProgress(null);
+
+    if (result.failures.length > 0) {
+      setImportFailures(result.failures);
+    }
+
+    if (result.importedSongs.length > 0) {
+      await refreshLibraryFromDB();
+
+      // Log import activity
+      const newLogs: ActivityLogEntry[] = result.importedSongs.map((s) => ({
+        id: `act-${Date.now()}-${s.id}`,
+        action: 'UPLOAD',
+        songId: s.id,
+        songTitle: s.title,
+        performedBy: user?.id || 'local',
+        performedByName: user?.fullName || 'User',
+        timestamp: new Date().toISOString(),
+        details: `Imported "${s.originalFilename}" (${s.category})`,
+      }));
+      setActivityLogs((prev) => [...newLogs, ...prev]);
+
+      // If nothing is playing, load first imported song
+      if (!player.currentSong) {
+        player.playSong(result.importedSongs[0]);
+      }
     }
   };
 
-  const handlePrevSong = () => {
-    if (!currentSong) return;
-    const activeList = songs.filter((s) => !s.isDeleted);
-    const currentIndex = activeList.findIndex((s) => s.id === currentSong.id);
-    if (currentIndex !== -1) {
-      const prevIndex = (currentIndex - 1 + activeList.length) % activeList.length;
-      setCurrentSong(activeList[prevIndex]);
-      setIsPlaying(true);
-    }
-  };
-
-  const handleToggleFavorite = (songId: string) => {
-    setSongs((prev) =>
-      prev.map((s) => (s.id === songId ? { ...s, isFavorite: !s.isFavorite } : s))
-    );
-    if (currentSong?.id === songId) {
-      setCurrentSong((prev) => (prev ? { ...prev, isFavorite: !prev.isFavorite } : null));
-    }
-  };
-
-  const handleAddSong = (
-    newSongData: Omit<Song, 'id' | 'createdAt' | 'updatedAt' | 'isFavorite' | 'isDownloaded' | 'isDeleted'>
-  ) => {
-    const newSong: Song = {
-      ...newSongData,
-      id: `song-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isFavorite: false,
-      isDownloaded: true,
-      isDeleted: false,
-    };
-
-    setSongs((prev) => [newSong, ...prev]);
-
-    // Add activity log
-    const newLog: ActivityLogEntry = {
-      id: `act-${Date.now()}`,
-      action: 'UPLOAD',
-      songId: newSong.id,
-      songTitle: newSong.title,
-      performedBy: user?.id || 'unknown',
-      performedByName: user?.fullName || 'User',
-      timestamp: new Date().toISOString(),
-      details: `${newSong.category} • ${newSong.ragam || 'Classical'}`,
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-  };
-
-  const handleDeleteSong = (songId: string) => {
-    const target = songs.find((s) => s.id === songId);
-    if (!target) return;
-
-    setSongs((prev) =>
-      prev.map((s) =>
-        s.id === songId
-          ? { ...s, isDeleted: true, deletedAt: new Date().toISOString() }
-          : s
-      )
-    );
-
-    // If current song is deleted, advance or stop
-    if (currentSong?.id === songId) {
-      setIsPlaying(false);
-    }
-
-    // Add activity log
-    const newLog: ActivityLogEntry = {
-      id: `act-${Date.now()}`,
-      action: 'DELETE',
-      songId: target.id,
-      songTitle: target.title,
-      performedBy: user?.id || 'unknown',
-      performedByName: user?.fullName || 'User',
-      timestamp: new Date().toISOString(),
-      details: 'Moved to Recovery Bin',
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-  };
-
-  const handleRestoreSong = (songId: string) => {
-    const target = songs.find((s) => s.id === songId);
-    if (!target) return;
-
-    setSongs((prev) =>
-      prev.map((s) =>
-        s.id === songId ? { ...s, isDeleted: false, deletedAt: undefined } : s
-      )
-    );
-
-    // Add activity log
-    const newLog: ActivityLogEntry = {
-      id: `act-${Date.now()}`,
-      action: 'RESTORE',
-      songId: target.id,
-      songTitle: target.title,
-      performedBy: user?.id || 'unknown',
-      performedByName: user?.fullName || 'User',
-      timestamp: new Date().toISOString(),
-      details: 'Restored from Recovery Bin',
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
-  };
-
-  const handleRenameSong = (songId: string, newTitle: string) => {
+  // Rename song
+  const handleRenameSong = async (songId: string, newTitle: string) => {
     const target = songs.find((s) => s.id === songId);
     if (!target) return;
     const oldTitle = target.title;
 
-    setSongs((prev) =>
-      prev.map((s) => (s.id === songId ? { ...s, title: newTitle } : s))
-    );
+    await renameSong(songId, newTitle);
+    await refreshLibraryFromDB();
 
-    if (currentSong?.id === songId) {
-      setCurrentSong((prev) => (prev ? { ...prev, title: newTitle } : null));
+    // If currently playing, update player's song reference
+    if (player.currentSong?.id === songId) {
+      player.playSong({ ...player.currentSong, title: newTitle });
     }
 
-    // Add activity log
+    // Log activity
     const newLog: ActivityLogEntry = {
       id: `act-${Date.now()}`,
       action: 'RENAME',
-      songId: target.id,
+      songId,
       songTitle: newTitle,
-      performedBy: user?.id || 'unknown',
+      performedBy: user?.id || 'local',
       performedByName: user?.fullName || 'User',
       timestamp: new Date().toISOString(),
       details: `Renamed from "${oldTitle}"`,
@@ -223,16 +279,89 @@ export const App: React.FC = () => {
     setActivityLogs((prev) => [newLog, ...prev]);
   };
 
-  const handleRoleSwitch = (newRole: UserRole) => {
+  // Delete song (move to recovery bin)
+  const handleDeleteSong = async (songId: string) => {
+    const target = songs.find((s) => s.id === songId);
+    if (!target) return;
+
+    // If playing this song, pause
+    if (player.currentSong?.id === songId) {
+      player.pause();
+    }
+
+    await deleteLocalSong(songId, true);
+    await refreshLibraryFromDB();
+
+    // Log activity
+    const newLog: ActivityLogEntry = {
+      id: `act-${Date.now()}`,
+      action: 'DELETE',
+      songId: target.id,
+      songTitle: target.title,
+      performedBy: user?.id || 'local',
+      performedByName: user?.fullName || 'User',
+      timestamp: new Date().toISOString(),
+      details: 'Moved to Recovery Bin',
+    };
+    setActivityLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Restore song from recovery bin
+  const handleRestoreSong = async (songId: string) => {
+    const target = deletedSongs.find((s) => s.id === songId);
+    if (!target) return;
+
+    await restoreLocalSong(songId);
+    await refreshLibraryFromDB();
+
+    // Log activity
+    const newLog: ActivityLogEntry = {
+      id: `act-${Date.now()}`,
+      action: 'RESTORE',
+      songId: target.id,
+      songTitle: target.title,
+      performedBy: user?.id || 'local',
+      performedByName: user?.fullName || 'User',
+      timestamp: new Date().toISOString(),
+      details: 'Restored from Recovery Bin',
+    };
+    setActivityLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Toggle favorite
+  const handleToggleFavorite = async (songId: string) => {
+    await toggleSongFavorite(songId);
+    await refreshLibraryFromDB();
+
+    if (player.currentSong?.id === songId) {
+      player.playSong({
+        ...player.currentSong,
+        isFavorite: !player.currentSong.isFavorite,
+      });
+    }
+  };
+
+  const handleRoleSwitch = async (newRole: UserRole) => {
     if (!user) return;
-    setUser({
+    const updatedUser: UserProfile = {
       ...user,
       role: newRole,
       fullName: newRole === 'TEACHER' ? 'Guru Keerthana (Dance Teacher)' : `${user.username} (Student)`,
-    });
+    };
+    setUser(updatedUser);
+    await setAppSetting('currentUser', updatedUser);
   };
 
-  const deletedSongs = songs.filter((s) => s.isDeleted);
+  if (!isDbInitialized) {
+    return (
+      <div className="min-h-screen bg-canvas flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-3 border-sage border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-semibold text-charcoal">Loading Naatyavedam Library...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Render view
   const renderViewContent = () => {
@@ -252,21 +381,29 @@ export const App: React.FC = () => {
           />
         );
       case 'register':
-        return (
-          <RegisterPage
-            onNavigate={setCurrentView}
-          />
-        );
+        return <RegisterPage onNavigate={setCurrentView} />;
       case 'player':
         return (
           <PlayerPage
-            song={currentSong}
-            isPlaying={isPlaying}
-            onTogglePlay={handleTogglePlay}
-            onNextSong={handleNextSong}
-            onPrevSong={handlePrevSong}
+            song={player.currentSong}
+            isPlaying={player.isPlaying}
+            currentTime={player.currentTime}
+            duration={player.duration}
+            isLooping={player.isLooping}
+            playbackRate={player.playbackRate}
+            isLoadingAudio={player.isLoadingAudio}
+            audioError={player.audioError}
+            volume={player.volume}
+            onTogglePlay={player.togglePlay}
+            onSeek={player.seek}
+            onNextSong={player.nextSong}
+            onPrevSong={player.prevSong}
+            onToggleLoop={player.toggleLoop}
+            onSetPlaybackRate={player.setPlaybackRate}
+            onSetVolume={player.setVolume}
             onToggleFavorite={handleToggleFavorite}
             onNavigate={setCurrentView}
+            onClearError={player.clearError}
           />
         );
       case 'settings':
@@ -285,15 +422,20 @@ export const App: React.FC = () => {
         return (
           <LibraryPage
             songs={songs}
-            currentSong={currentSong}
-            isPlaying={isPlaying}
+            currentSong={player.currentSong}
+            isPlaying={player.isPlaying}
+            isLoadingAudio={player.isLoadingAudio}
             user={user}
-            onPlaySong={handlePlaySong}
-            onTogglePlay={handleTogglePlay}
+            onPlaySong={player.playSong}
+            onTogglePlay={player.togglePlay}
             onToggleFavorite={handleToggleFavorite}
-            onAddSong={handleAddSong}
             onDeleteSong={handleDeleteSong}
             onRenameSong={handleRenameSong}
+            onImportFiles={handleImportFiles}
+            onLoadSampleRepertoire={handleLoadSampleRepertoire}
+            importProgress={importProgress}
+            importFailures={importFailures}
+            onClearImportFailures={() => setImportFailures([])}
           />
         );
     }
@@ -304,9 +446,10 @@ export const App: React.FC = () => {
       currentView={currentView}
       onNavigate={setCurrentView}
       user={user}
-      currentSong={currentSong}
-      isPlaying={isPlaying}
-      onTogglePlay={handleTogglePlay}
+      currentSong={player.currentSong}
+      isPlaying={player.isPlaying}
+      isLoadingAudio={player.isLoadingAudio}
+      onTogglePlay={player.togglePlay}
       isOnline={isOnline}
     >
       {renderViewContent()}

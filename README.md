@@ -1,4 +1,4 @@
-# Naatyavedam Library (నాట్యవేదం లైబ్రరీ)
+# Naatyavedam Library 
 
 **Naatyavedam Library** is a production-quality, mobile-first Progressive Web Application (PWA) designed for an Indian classical dance (**Kuchipudi**) school. The dance teacher and approved students collaboratively maintain one shared collection of dance music for class rehearsals, performances, and personal practice.
 
@@ -109,3 +109,4 @@ npm run build
 npm run preview
 ```
 Visit the preview URL in Chrome or an Android device on the same local network to test PWA installation and offline service worker caching.
+

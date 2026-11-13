@@ -126,3 +126,4 @@ fs.writeFileSync(path.join(iconsDir, 'icon-512x512.png'), generateIconPng(512));
 fs.writeFileSync(path.resolve('public', 'apple-touch-icon.png'), generateIconPng(192));
 fs.writeFileSync(path.resolve('public', 'favicon.ico'), generateIconPng(64));
 console.log('PNG icons created successfully.');
+

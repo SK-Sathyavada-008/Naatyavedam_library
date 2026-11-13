@@ -11,6 +11,7 @@ export interface AppLayoutProps {
   user: UserProfile | null;
   currentSong: Song | null;
   isPlaying: boolean;
+  isLoadingAudio?: boolean;
   onTogglePlay: () => void;
   isOnline?: boolean;
   children: React.ReactNode;
@@ -22,6 +23,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   user,
   currentSong,
   isPlaying,
+  isLoadingAudio = false,
   onTogglePlay,
   isOnline = true,
   children,
@@ -58,6 +60,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         <MiniPlayer
           song={currentSong}
           isPlaying={isPlaying}
+          isLoadingAudio={isLoadingAudio}
           onTogglePlay={onTogglePlay}
           onExpand={() => onNavigate('player')}
         />
@@ -74,3 +77,4 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
     </div>
   );
 };
+

@@ -109,3 +109,4 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
     </div>
   );
 };
+

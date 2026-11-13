@@ -1,11 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Search,
   X,
   Play,
   Pause,
   Heart,
-  Download,
   Plus,
   MoreVertical,
   CheckCircle,
@@ -13,9 +12,12 @@ import {
   Trash2,
   Share2,
   Edit2,
-  FolderDown,
+  ArrowUpDown,
+  Music2,
+  AlertCircle,
+  Sparkles,
 } from 'lucide-react';
-import { Song, DanceCategory, UserProfile } from '../types';
+import { Song, UserProfile, SortOption } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
@@ -26,46 +28,49 @@ export interface LibraryPageProps {
   songs: Song[];
   currentSong: Song | null;
   isPlaying: boolean;
+  isLoadingAudio?: boolean;
   user: UserProfile | null;
   onPlaySong: (song: Song) => void;
   onTogglePlay: () => void;
   onToggleFavorite: (songId: string) => void;
-  onAddSong: (newSong: Omit<Song, 'id' | 'createdAt' | 'updatedAt' | 'isFavorite' | 'isDownloaded' | 'isDeleted'>) => void;
   onDeleteSong: (songId: string) => void;
   onRenameSong: (songId: string, newTitle: string) => void;
+  onImportFiles: (files: FileList | File[]) => void;
+  onLoadSampleRepertoire: () => void;
+  importProgress?: { current: number; total: number; currentFileName: string } | null;
+  importFailures?: { fileName: string; reason: string }[];
+  onClearImportFailures?: () => void;
 }
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
   songs,
   currentSong,
   isPlaying,
-  user,
+  isLoadingAudio = false,
   onPlaySong,
   onTogglePlay,
   onToggleFavorite,
-  onAddSong,
   onDeleteSong,
   onRenameSong,
+  onImportFiles,
+  onLoadSampleRepertoire,
+  importProgress,
+  importFailures = [],
+  onClearImportFailures,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
-  const [filterDownloadedOnly, setFilterDownloadedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('recent');
 
   // Modals & Action States
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedSongForMenu, setSelectedSongForMenu] = useState<Song | null>(null);
   const [renameSongModalOpen, setRenameSongModalOpen] = useState(false);
+  const [songToRename, setSongToRename] = useState<Song | null>(null);
   const [renameTitleInput, setRenameTitleInput] = useState('');
 
-  // Upload Form State
-  const [newTitle, setNewTitle] = useState('');
-  const [newRagam, setNewRagam] = useState('');
-  const [newTalam, setNewTalam] = useState('Adi');
-  const [newCategory, setNewCategory] = useState<DanceCategory>('Jatiswaram');
-  const [newComposer, setNewComposer] = useState('');
-  const [uploadedFileName, setUploadedFileName] = useState('');
-  const [uploadError, setUploadError] = useState('');
+  // Hidden file input ref
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const categories = [
     'All',
@@ -79,91 +84,82 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
     'Slokam',
   ];
 
-  // Filter songs
-  const filteredSongs = useMemo(() => {
-    return songs.filter((song) => {
+  // Handle phone / browser file picker selection
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onImportFiles(e.target.files);
+      // Reset input value so same files can be re-selected if desired
+      e.target.value = '';
+    }
+  };
+
+  // Filter & Sort songs
+  const filteredAndSortedSongs = useMemo(() => {
+    const list = songs.filter((song) => {
       if (song.isDeleted) return false;
       if (filterFavoritesOnly && !song.isFavorite) return false;
-      if (filterDownloadedOnly && !song.isDownloaded) return false;
       if (selectedCategory !== 'All' && song.category !== selectedCategory) return false;
 
       if (!searchQuery.trim()) return true;
       const query = searchQuery.toLowerCase();
       return (
         song.title.toLowerCase().includes(query) ||
+        song.originalFilename.toLowerCase().includes(query) ||
         (song.ragam && song.ragam.toLowerCase().includes(query)) ||
         (song.talam && song.talam.toLowerCase().includes(query)) ||
         (song.composer && song.composer.toLowerCase().includes(query)) ||
-        song.category.toLowerCase().includes(query)
+        (song.category && song.category.toLowerCase().includes(query))
       );
     });
-  }, [songs, searchQuery, selectedCategory, filterFavoritesOnly, filterDownloadedOnly]);
 
-  const handleOpenUpload = () => {
-    setNewTitle('');
-    setNewRagam('');
-    setNewTalam('Adi');
-    setNewCategory('Jatiswaram');
-    setNewComposer('');
-    setUploadedFileName('');
-    setUploadError('');
-    setIsUploadModalOpen(true);
-  };
-
-  const handleSimulateFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadedFileName(file.name);
-      if (!newTitle) {
-        // Auto-fill title from filename
-        const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-        setNewTitle(cleanName);
+    // Apply sorting
+    return list.sort((a, b) => {
+      switch (sortBy) {
+        case 'title-asc':
+          return a.title.localeCompare(b.title);
+        case 'title-desc':
+          return b.title.localeCompare(a.title);
+        case 'duration-desc':
+          return (b.duration || 0) - (a.duration || 0);
+        case 'duration-asc':
+          return (a.duration || 0) - (b.duration || 0);
+        case 'recent':
+        default:
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
       }
-    }
-  };
-
-  const handleCreateSongSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) {
-      setUploadError('Song title is required');
-      return;
-    }
-
-    onAddSong({
-      title: newTitle.trim(),
-      ragam: newRagam.trim() || undefined,
-      talam: newTalam.trim() || 'Adi',
-      category: newCategory,
-      composer: newComposer.trim() || undefined,
-      duration: 240, // Simulated 4 mins
-      fileSize: 5242880, // ~5MB
-      fileName: uploadedFileName || `${newTitle.toLowerCase().replace(/\s+/g, '_')}.mp3`,
-      mimeType: 'audio/mpeg',
-      uploadedBy: user?.id || 'teacher-001',
-      uploadedByName: user?.fullName || 'Teacher',
     });
-
-    setIsUploadModalOpen(false);
-  };
+  }, [songs, searchQuery, selectedCategory, filterFavoritesOnly, sortBy]);
 
   const handleOpenRename = (song: Song) => {
     setSelectedSongForMenu(null);
+    setSongToRename(song);
     setRenameTitleInput(song.title);
     setRenameSongModalOpen(true);
   };
 
   const handleConfirmRename = () => {
-    if (selectedSongForMenu && renameTitleInput.trim()) {
-      onRenameSong(selectedSongForMenu.id, renameTitleInput.trim());
+    if (songToRename && renameTitleInput.trim()) {
+      onRenameSong(songToRename.id, renameTitleInput.trim());
     }
     setRenameSongModalOpen(false);
-    setSelectedSongForMenu(null);
+    setSongToRename(null);
   };
 
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-6 w-full">
-      {/* Search Bar & Quick Actions */}
-      <div className="space-y-3 mb-4">
+      {/* Hidden file input supporting single & multiple audio files */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.opus,.flac"
+        onChange={handleFileChange}
+        className="hidden"
+        id="audio-file-importer"
+      />
+
+      {/* Top Search & Add Song Button */}
+      <div className="space-y-3 mb-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Input
@@ -187,103 +183,179 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
             />
           </div>
 
-          {/* Upload Button */}
+          {/* Add Song Button */}
           <Button
             variant="primary"
             size="md"
-            onClick={handleOpenUpload}
-            className="flex items-center gap-1.5 flex-shrink-0 px-3.5"
-            title="Upload Dance Song"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-1.5 flex-shrink-0 px-3.5 shadow-subtle"
+            title="Import Audio Files from Device"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Upload</span>
+            <span>Add Song</span>
           </Button>
         </div>
 
-        {/* Filter Badges & Categories Horizontal Scroll */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {/* Quick toggle favorites */}
-          <button
-            onClick={() => setFilterFavoritesOnly(!filterFavoritesOnly)}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1 border transition-all duration-150',
-              filterFavoritesOnly
-                ? 'bg-red-50 text-red-700 border-red-200'
-                : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
-            )}
-          >
-            <Heart className={cn('w-3.5 h-3.5', filterFavoritesOnly && 'fill-current text-red-600')} />
-            <span>Favorites</span>
-          </button>
-
-          {/* Quick toggle downloaded */}
-          <button
-            onClick={() => setFilterDownloadedOnly(!filterDownloadedOnly)}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1 border transition-all duration-150',
-              filterDownloadedOnly
-                ? 'bg-sage-light text-sage-hover border-sage-border'
-                : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
-            )}
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Offline Ready</span>
-          </button>
-
-          <div className="w-[1px] h-5 bg-border mx-1 flex-shrink-0" />
-
-          {/* Dance Categories */}
-          {categories.map((cat) => (
+        {/* Filters & Sorting Row */}
+        <div className="flex items-center justify-between gap-2">
+          {/* Filter Chips Horizontal Scroll */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-1">
+            {/* Quick toggle favorites */}
             <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              onClick={() => setFilterFavoritesOnly(!filterFavoritesOnly)}
               className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all duration-150',
-                selectedCategory === cat
-                  ? 'bg-sage text-canvas border-sage'
+                'px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1 border transition-all duration-150',
+                filterFavoritesOnly
+                  ? 'bg-red-50 text-red-700 border-red-200'
                   : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
               )}
             >
-              {cat}
+              <Heart className={cn('w-3.5 h-3.5', filterFavoritesOnly && 'fill-current text-red-600')} />
+              <span>Favorites</span>
             </button>
-          ))}
+
+            <div className="w-[1px] h-4 bg-border mx-1 flex-shrink-0" />
+
+            {/* Dance Categories */}
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all duration-150',
+                  selectedCategory === cat
+                    ? 'bg-sage text-canvas border-sage'
+                    : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
+                )}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Sort Dropdown */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <ArrowUpDown className="w-3.5 h-3.5 text-charcoal-muted" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="text-xs bg-canvas-card border border-border text-charcoal rounded-lg px-2 py-1 focus:outline-none focus:border-sage"
+              aria-label="Sort repertoire"
+            >
+              <option value="recent">Recently Added</option>
+              <option value="title-asc">Title (A – Z)</option>
+              <option value="title-desc">Title (Z – A)</option>
+              <option value="duration-desc">Longest First</option>
+              <option value="duration-asc">Shortest First</option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Header Info: Track count & sample mode banner */}
-      <div className="flex items-center justify-between py-1 mb-2">
+      {/* Import Failures Alert Banner */}
+      {importFailures.length > 0 && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <strong className="font-semibold">Some files could not be imported:</strong>
+              <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                {importFailures.map((f, i) => (
+                  <li key={i}>
+                    {f.fileName}: {f.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          {onClearImportFailures && (
+            <button
+              onClick={onClearImportFailures}
+              className="p-1 hover:text-red-950 font-bold"
+              aria-label="Dismiss alert"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Header Info: Track count */}
+      <div className="flex items-center justify-between py-1 mb-2 px-0.5">
         <span className="text-xs font-medium text-charcoal-muted">
-          Showing {filteredSongs.length} {filteredSongs.length === 1 ? 'song' : 'songs'}
+          {filteredAndSortedSongs.length} {filteredAndSortedSongs.length === 1 ? 'song' : 'songs'} in local library
         </span>
-        <span className="text-[11px] text-sage font-medium bg-sage-light/70 px-2 py-0.5 rounded-md">
-          Sample Repertoire
+        <span className="text-[11px] text-sage font-medium bg-sage-light/70 px-2 py-0.5 rounded-md flex items-center gap-1">
+          <CheckCircle className="w-3 h-3" />
+          <span>IndexedDB Local Storage</span>
         </span>
       </div>
 
-      {/* Song List */}
+      {/* Song List or Empty State */}
       <div className="space-y-2">
-        {filteredSongs.length === 0 ? (
-          <div className="text-center py-16 px-4 bg-canvas-card border border-border/80 rounded-2xl my-4">
-            <FileMusic className="w-12 h-12 text-charcoal-subtle mx-auto mb-3" />
-            <h3 className="text-base font-semibold text-charcoal">No dance songs found</h3>
-            <p className="text-sm text-charcoal-muted mt-1 max-w-xs mx-auto">
-              {searchQuery
-                ? `No songs matched "${searchQuery}". Try searching for a different Ragam or Talam.`
-                : 'No songs in this filter category yet.'}
-            </p>
-            {searchQuery && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setSearchQuery('')}
-                className="mt-4"
-              >
-                Clear Search
-              </Button>
+        {filteredAndSortedSongs.length === 0 ? (
+          <div className="text-center py-16 px-4 bg-canvas-card border border-border/80 rounded-2xl my-2">
+            {songs.filter((s) => !s.isDeleted).length === 0 ? (
+              // Truly empty library
+              <div className="flex flex-col items-center max-w-sm mx-auto">
+                <div className="w-16 h-16 rounded-2xl bg-sage-light text-sage flex items-center justify-center mb-4">
+                  <Music2 className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-bold text-charcoal">Your Dance Library is Empty</h3>
+                <p className="text-sm text-charcoal-muted mt-1 leading-relaxed">
+                  Import dance music from your phone to start practicing. Your original files will remain completely untouched.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3 mt-6 w-full">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex-1 flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Import Audio Files</span>
+                  </Button>
+
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    onClick={onLoadSampleRepertoire}
+                    className="flex-1 flex items-center justify-center gap-2"
+                    title="Load sample Kuchipudi songs"
+                  >
+                    <Sparkles className="w-4 h-4 text-sage" />
+                    <span>Load Demo Repertoire</span>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              // Filter/Search empty
+              <div>
+                <FileMusic className="w-12 h-12 text-charcoal-subtle mx-auto mb-3" />
+                <h3 className="text-base font-semibold text-charcoal">No matching songs</h3>
+                <p className="text-sm text-charcoal-muted mt-1 max-w-xs mx-auto">
+                  {searchQuery
+                    ? `No songs matched "${searchQuery}".`
+                    : 'No songs found with current category and filters.'}
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setSelectedCategory('All');
+                    setFilterFavoritesOnly(false);
+                  }}
+                  className="mt-4"
+                >
+                  Reset Filters
+                </Button>
+              </div>
             )}
           </div>
         ) : (
-          filteredSongs.map((song) => {
+          filteredAndSortedSongs.map((song) => {
             const isThisPlaying = currentSong?.id === song.id && isPlaying;
             const isThisSelected = currentSong?.id === song.id;
 
@@ -293,11 +365,11 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 className={cn(
                   'group flex items-center justify-between p-3 sm:p-3.5 rounded-xl border transition-all duration-150',
                   isThisSelected
-                    ? 'bg-sage-light/40 border-sage-border shadow-subtle'
+                    ? 'bg-sage-light/40 border-sage-border shadow-subtle ring-1 ring-sage/30'
                     : 'bg-canvas-card border-border hover:border-border-strong'
                 )}
               >
-                {/* Play Button & Song Info */}
+                {/* Play Button & Song Info (Easy Scanning) */}
                 <div
                   className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
                   onClick={() => {
@@ -320,45 +392,57 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                     )}
                   >
                     {isThisPlaying ? (
-                      <Pause className="w-5 h-5 fill-current" />
+                      isLoadingAudio ? (
+                        <div className="w-4 h-4 border-2 border-canvas border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Pause className="w-5 h-5 fill-current" />
+                      )
                     ) : (
                       <Play className="w-5 h-5 fill-current ml-0.5" />
                     )}
                   </button>
 
-                  {/* Title and Dance Details */}
+                  {/* Title prioritized for easy scanning */}
                   <div className="min-w-0 flex-1 text-left">
                     <div className="flex items-center gap-2">
                       <h4
                         className={cn(
-                          'text-sm sm:text-base font-semibold truncate',
+                          'text-sm sm:text-base font-semibold truncate leading-tight',
                           isThisSelected ? 'text-sage-hover font-bold' : 'text-charcoal'
                         )}
+                        title={song.title}
                       >
                         {song.title}
                       </h4>
-                      {song.isDownloaded && (
-                        <span title="Available Offline">
+                      {song.isLocalAvailable && (
+                        <span title="Stored locally in IndexedDB">
                           <CheckCircle className="w-3.5 h-3.5 text-sage flex-shrink-0" />
                         </span>
                       )}
                     </div>
 
                     <div className="flex items-center gap-1.5 text-xs text-charcoal-muted mt-0.5 truncate">
-                      <Badge variant="sage" size="sm">
-                        {song.category}
-                      </Badge>
+                      {song.category && (
+                        <Badge variant="sage" size="sm">
+                          {song.category}
+                        </Badge>
+                      )}
                       {song.ragam && <span>• {song.ragam}</span>}
                       {song.talam && <span>({song.talam})</span>}
+                      {!song.ragam && !song.talam && (
+                        <span className="truncate text-charcoal-subtle">{song.originalFilename}</span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Right Actions: Duration, Favorite, More Menu */}
+                {/* Right Actions: Optional Duration, Favorite control, More-options menu */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-                  <span className="text-xs text-charcoal-muted font-medium px-1 hidden xs:inline">
-                    {formatDuration(song.duration)}
-                  </span>
+                  {song.duration !== null && (
+                    <span className="text-xs text-charcoal-muted font-medium px-1 hidden xs:inline">
+                      {formatDuration(song.duration)}
+                    </span>
+                  )}
 
                   {/* Favorite Toggle */}
                   <button
@@ -371,10 +455,10 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                         : 'text-charcoal-subtle hover:text-charcoal hover:bg-canvas-subtle'
                     )}
                   >
-                    <Heart className={cn('w-4 h-4', song.isFavorite && 'fill-current')} />
+                    <Heart className={cn('w-4 h-4', song.isFavorite && 'fill-current text-red-500')} />
                   </button>
 
-                  {/* Options Menu Button */}
+                  {/* More-options menu button */}
                   <button
                     onClick={() => setSelectedSongForMenu(song)}
                     aria-label="Song options"
@@ -389,13 +473,37 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
         )}
       </div>
 
-      {/* Song Actions Bottom Sheet / Modal */}
+      {/* Importing Progress Modal */}
+      {importProgress && (
+        <Modal
+          isOpen={Boolean(importProgress)}
+          onClose={() => {}}
+          title="Importing Audio"
+        >
+          <div className="py-4 text-center space-y-4">
+            <div className="w-12 h-12 border-3 border-sage border-t-transparent rounded-full animate-spin mx-auto" />
+            <div>
+              <p className="text-sm font-semibold text-charcoal">
+                Processing file {importProgress.current} of {importProgress.total}...
+              </p>
+              <p className="text-xs text-charcoal-muted mt-1 truncate max-w-xs mx-auto">
+                {importProgress.currentFileName}
+              </p>
+            </div>
+            <p className="text-xs text-charcoal-subtle">
+              Copying audio into your device's IndexedDB. Original phone files remain untouched.
+            </p>
+          </div>
+        </Modal>
+      )}
+
+      {/* More Options Modal / Bottom Sheet */}
       {selectedSongForMenu && (
         <Modal
           isOpen={Boolean(selectedSongForMenu)}
           onClose={() => setSelectedSongForMenu(null)}
           title={selectedSongForMenu.title}
-          description={`${selectedSongForMenu.category} • ${selectedSongForMenu.ragam || 'Classical'}`}
+          description={`Original: ${selectedSongForMenu.originalFilename}`}
         >
           <div className="space-y-1 py-1">
             <button
@@ -425,36 +533,27 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-canvas-subtle text-left text-sm font-medium text-charcoal transition-colors"
             >
               <Edit2 className="w-4 h-4 text-charcoal-muted" />
-              <span>Rename Composition</span>
-            </button>
-
-            <button
-              onClick={() => {
-                alert(`Downloaded "${selectedSongForMenu.title}" to local offline cache.`);
-                setSelectedSongForMenu(null);
-              }}
-              className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-canvas-subtle text-left text-sm font-medium text-charcoal transition-colors"
-            >
-              <FolderDown className="w-4 h-4 text-charcoal-muted" />
-              <span>Save for Offline Playback</span>
+              <span>Rename Display Title</span>
             </button>
 
             <button
               onClick={() => {
                 if (navigator.share) {
-                  navigator.share({
-                    title: selectedSongForMenu.title,
-                    text: `Kuchipudi Dance: ${selectedSongForMenu.title} (${selectedSongForMenu.ragam || 'Classical'})`,
-                  }).catch(() => {});
+                  navigator
+                    .share({
+                      title: selectedSongForMenu.title,
+                      text: `Kuchipudi Dance: ${selectedSongForMenu.title}`,
+                    })
+                    .catch(() => {});
                 } else {
-                  alert(`Share link copied: ${selectedSongForMenu.title}`);
+                  alert(`Song title: ${selectedSongForMenu.title}`);
                 }
                 setSelectedSongForMenu(null);
               }}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-canvas-subtle text-left text-sm font-medium text-charcoal transition-colors"
             >
               <Share2 className="w-4 h-4 text-charcoal-muted" />
-              <span>Share Song</span>
+              <span>Share Title</span>
             </button>
 
             <div className="pt-2 border-t border-border/80 mt-2">
@@ -468,7 +567,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-red-50 text-left text-sm font-medium text-red-600 transition-colors"
               >
                 <Trash2 className="w-4 h-4 text-red-500" />
-                <span>Move to Recovery Bin</span>
+                <span>Delete Local Song</span>
               </button>
             </div>
           </div>
@@ -479,124 +578,31 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
       <Modal
         isOpen={renameSongModalOpen}
         onClose={() => setRenameSongModalOpen(false)}
-        title="Rename Dance Composition"
+        title="Rename Display Title"
+        description="Original phone filename remains untouched."
       >
         <div className="space-y-4">
           <Input
-            label="Composition Title"
+            label="Display Title"
             value={renameTitleInput}
             onChange={(e) => setRenameTitleInput(e.target.value)}
-            placeholder="e.g. Kalyani Jatiswaram - Fast Tempo"
+            placeholder="e.g. Kalyani Jatiswaram - Rehearsal 1"
             autoFocus
           />
+          {songToRename && (
+            <p className="text-xs text-charcoal-muted">
+              Original file: <strong className="text-charcoal">{songToRename.originalFilename}</strong>
+            </p>
+          )}
           <div className="flex gap-2 justify-end pt-2">
             <Button variant="secondary" onClick={() => setRenameSongModalOpen(false)}>
               Cancel
             </Button>
             <Button variant="primary" onClick={handleConfirmRename}>
-              Save Name
+              Save Display Title
             </Button>
           </div>
         </div>
-      </Modal>
-
-      {/* Upload Song Modal */}
-      <Modal
-        isOpen={isUploadModalOpen}
-        onClose={() => setIsUploadModalOpen(false)}
-        title="Upload Dance Song"
-        description="Add a classical dance composition to the shared library"
-      >
-        <form onSubmit={handleCreateSongSubmit} className="space-y-3.5">
-          {/* File Picker */}
-          <div className="p-4 rounded-xl border-2 border-dashed border-border hover:border-sage bg-canvas-subtle/50 text-center cursor-pointer transition-colors">
-            <label className="cursor-pointer block">
-              <FileMusic className="w-8 h-8 text-sage mx-auto mb-2" />
-              <span className="text-sm font-semibold text-charcoal block">
-                {uploadedFileName || 'Choose MP3 or M4A audio file'}
-              </span>
-              <span className="text-xs text-charcoal-muted mt-1 block">
-                {uploadedFileName ? 'Tap to change file' : 'Large audio files supported'}
-              </span>
-              <input
-                type="file"
-                accept="audio/*"
-                onChange={handleSimulateFileSelect}
-                className="hidden"
-              />
-            </label>
-          </div>
-
-          <Input
-            label="Song Title"
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            placeholder="e.g. Manduka Shabdam"
-            required
-          />
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Ragam"
-              value={newRagam}
-              onChange={(e) => setNewRagam(e.target.value)}
-              placeholder="e.g. Mohanam"
-            />
-            <Input
-              label="Talam"
-              value={newTalam}
-              onChange={(e) => setNewTalam(e.target.value)}
-              placeholder="e.g. Adi or Rupaka"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-charcoal">Dance Category</label>
-            <select
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value as DanceCategory)}
-              className="w-full min-h-touch bg-canvas-card text-charcoal border border-border rounded-xl px-3 py-2.5 text-base focus:outline-none focus:border-sage focus:ring-1 focus:ring-sage"
-            >
-              <option value="Pushpanjali">Pushpanjali</option>
-              <option value="Jatiswaram">Jatiswaram</option>
-              <option value="Shabdam">Shabdam</option>
-              <option value="Varnam">Varnam</option>
-              <option value="Keerthanam">Keerthanam</option>
-              <option value="Tarangam">Tarangam</option>
-              <option value="Thillana">Thillana</option>
-              <option value="Slokam">Slokam</option>
-              <option value="Practice / Talam">Practice / Talam</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-
-          <Input
-            label="Composer / Guru (Optional)"
-            value={newComposer}
-            onChange={(e) => setNewComposer(e.target.value)}
-            placeholder="e.g. Narayana Teertha"
-          />
-
-          {uploadError && (
-            <div className="p-2.5 rounded-lg bg-red-50 text-red-700 text-xs">
-              {uploadError}
-            </div>
-          )}
-
-          <div className="pt-2 flex gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              className="flex-1"
-              onClick={() => setIsUploadModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" className="flex-1">
-              Add to Library
-            </Button>
-          </div>
-        </form>
       </Modal>
     </div>
   );

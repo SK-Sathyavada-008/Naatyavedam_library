@@ -6,6 +6,7 @@ import { cn } from '../../utils';
 export interface MiniPlayerProps {
   song: Song | null;
   isPlaying: boolean;
+  isLoadingAudio?: boolean;
   onTogglePlay: () => void;
   onExpand: () => void;
 }
@@ -13,6 +14,7 @@ export interface MiniPlayerProps {
 export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   song,
   isPlaying,
+  isLoadingAudio = false,
   onTogglePlay,
   onExpand,
 }) => {
@@ -46,10 +48,13 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <button
             onClick={onTogglePlay}
+            disabled={isLoadingAudio}
             aria-label={isPlaying ? 'Pause song' : 'Play song'}
-            className="w-10 h-10 rounded-full bg-sage text-canvas flex items-center justify-center hover:bg-sage-hover active:scale-95 transition-transform shadow-subtle focus:outline-none"
+            className="w-10 h-10 rounded-full bg-sage text-canvas flex items-center justify-center hover:bg-sage-hover active:scale-95 transition-transform shadow-subtle focus:outline-none disabled:opacity-75"
           >
-            {isPlaying ? (
+            {isLoadingAudio ? (
+              <div className="w-4 h-4 border-2 border-canvas border-t-transparent rounded-full animate-spin" />
+            ) : isPlaying ? (
               <Pause className="w-5 h-5 fill-current" />
             ) : (
               <Play className="w-5 h-5 fill-current ml-0.5" />
@@ -68,3 +73,4 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
     </aside>
   );
 };
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   ChevronDown,
   Play,
@@ -10,10 +10,12 @@ import {
   Repeat,
   Heart,
   Share2,
-  Download,
   CheckCircle,
   Disc3,
   Gauge,
+  AlertCircle,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { Song, AppView } from '../types';
 import { Badge } from '../components/ui/Badge';
@@ -22,26 +24,46 @@ import { formatDuration, cn } from '../utils';
 export interface PlayerPageProps {
   song: Song | null;
   isPlaying: boolean;
+  currentTime: number;
+  duration: number;
+  isLooping: boolean;
+  playbackRate: number;
+  isLoadingAudio?: boolean;
+  audioError?: string | null;
+  volume: number;
   onTogglePlay: () => void;
+  onSeek: (seconds: number) => void;
   onNextSong?: () => void;
   onPrevSong?: () => void;
+  onToggleLoop: () => void;
+  onSetPlaybackRate: (rate: number) => void;
+  onSetVolume: (vol: number) => void;
   onToggleFavorite: (songId: string) => void;
   onNavigate: (view: AppView) => void;
+  onClearError?: () => void;
 }
 
 export const PlayerPage: React.FC<PlayerPageProps> = ({
   song,
   isPlaying,
+  currentTime,
+  duration,
+  isLooping,
+  playbackRate,
+  isLoadingAudio = false,
+  audioError,
+  volume,
   onTogglePlay,
+  onSeek,
   onNextSong,
   onPrevSong,
+  onToggleLoop,
+  onSetPlaybackRate,
+  onSetVolume,
   onToggleFavorite,
   onNavigate,
+  onClearError,
 }) => {
-  const [progress, setProgress] = useState(42); // 42% for demo state
-  const [isLooping, setIsLooping] = useState(false);
-  const [speed, setSpeed] = useState<number>(1.0);
-
   if (!song) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
@@ -60,18 +82,19 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
     );
   }
 
-  const currentTime = Math.floor((song.duration * progress) / 100);
-
   const cycleSpeed = () => {
     const speeds = [0.8, 0.9, 1.0, 1.1, 1.25];
-    const currentIndex = speeds.indexOf(speed);
+    const currentIndex = speeds.indexOf(playbackRate);
     const nextSpeed = speeds[(currentIndex + 1) % speeds.length];
-    setSpeed(nextSpeed);
+    onSetPlaybackRate(nextSpeed);
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setProgress(Number(e.target.value));
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSec = Number(e.target.value);
+    onSeek(newSec);
   };
+
+  const effectiveDuration = duration || song.duration || 0;
 
   return (
     <div className="flex-1 flex flex-col justify-between p-6 max-w-md mx-auto w-full min-h-screen">
@@ -90,7 +113,7 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             Now Practicing
           </span>
           <p className="text-xs text-charcoal-muted font-medium truncate max-w-[200px]">
-            {song.category} Repertoire
+            {song.category || 'Kuchipudi Repertoire'}
           </p>
         </div>
 
@@ -102,12 +125,27 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             song.isFavorite ? 'text-red-500' : 'text-charcoal-subtle hover:text-charcoal'
           )}
         >
-          <Heart className={cn('w-5 h-5', song.isFavorite && 'fill-current')} />
+          <Heart className={cn('w-5 h-5', song.isFavorite && 'fill-current text-red-500')} />
         </button>
       </div>
 
+      {/* Audio Error Alert if any */}
+      {audioError && (
+        <div className="my-2 p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 flex items-start justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+            <span>{audioError}</span>
+          </div>
+          {onClearError && (
+            <button onClick={onClearError} className="font-bold ml-2">
+              ×
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Center Artwork / Rhythm Disc */}
-      <div className="my-auto py-6 flex flex-col items-center">
+      <div className="my-auto py-4 flex flex-col items-center">
         <div
           className={cn(
             'relative w-64 h-64 sm:w-72 sm:h-72 rounded-full bg-gradient-to-tr from-[#3D5244] to-[#5E7A68] p-4 shadow-card flex items-center justify-center transition-transform duration-500',
@@ -123,19 +161,19 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
           <div
             className={cn(
               'w-24 h-24 rounded-full bg-canvas-card border-4 border-canvas flex flex-col items-center justify-center text-center p-2 shadow-inner',
-              isPlaying && 'animate-[spin_12s_linear_infinite]'
+              isPlaying && 'animate-[spin_10s_linear_infinite]'
             )}
           >
             <div className="w-4 h-4 rounded-full bg-charcoal mb-1" />
-            <span className="text-[9px] font-bold text-sage uppercase tracking-wider">
-              {song.category}
+            <span className="text-[9px] font-bold text-sage uppercase tracking-wider truncate max-w-[80px]">
+              {song.category || 'Natyam'}
             </span>
           </div>
         </div>
 
         {/* Track Details */}
         <div className="text-center mt-6 w-full px-4">
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-charcoal truncate">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-charcoal truncate" title={song.title}>
             {song.title}
           </h2>
 
@@ -152,17 +190,17 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             )}
           </div>
 
-          {song.composer && (
-            <p className="text-xs text-charcoal-subtle mt-1">
-              Composer: {song.composer}
-            </p>
-          )}
+          <p className="text-xs text-charcoal-subtle mt-1 truncate">
+            {song.originalFilename}
+          </p>
 
           {/* Offline check badge */}
-          <div className="flex items-center justify-center gap-1.5 mt-2 text-xs text-sage font-medium">
-            <CheckCircle className="w-3.5 h-3.5" />
-            <span>Available Offline</span>
-          </div>
+          {song.isLocalAvailable && (
+            <div className="flex items-center justify-center gap-1.5 mt-2 text-xs text-sage font-medium">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>Available Offline in IndexedDB</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -172,25 +210,28 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
         <div className="space-y-1.5">
           <input
             type="range"
-            min="0"
-            max="100"
-            value={progress}
-            onChange={handleSeek}
+            min={0}
+            max={effectiveDuration || 100}
+            step={0.5}
+            value={currentTime}
+            onChange={handleSliderChange}
             className="w-full h-1.5 bg-canvas-subtle rounded-lg appearance-none cursor-pointer accent-sage"
+            aria-label="Seek time"
           />
           <div className="flex items-center justify-between text-xs text-charcoal-muted font-medium px-0.5">
-            <span>{formatDuration(currentTime)}</span>
-            <span>{formatDuration(song.duration)}</span>
+            <span>{formatDuration(Math.floor(currentTime))}</span>
+            <span>{formatDuration(Math.floor(effectiveDuration))}</span>
           </div>
         </div>
 
         {/* Primary Playback Control Buttons */}
-        <div className="flex items-center justify-between px-2 pt-2">
-          {/* Replay 10 seconds */}
+        <div className="flex items-center justify-between px-2 pt-1">
+          {/* Rewind 10 seconds */}
           <button
-            onClick={() => setProgress(Math.max(0, progress - 5))}
+            onClick={() => onSeek(Math.max(0, currentTime - 10))}
             aria-label="Rewind 10 seconds"
             className="w-11 h-11 rounded-full flex items-center justify-center text-charcoal-muted hover:text-charcoal hover:bg-canvas-subtle transition-all active:scale-95"
+            title="Rewind 10s"
           >
             <RotateCcw className="w-5 h-5" />
           </button>
@@ -200,6 +241,7 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             onClick={onPrevSong}
             aria-label="Previous track"
             className="w-12 h-12 rounded-full flex items-center justify-center text-charcoal hover:bg-canvas-subtle transition-all active:scale-95"
+            title="Previous song"
           >
             <SkipBack className="w-5 h-5 fill-current" />
           </button>
@@ -208,9 +250,12 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
           <button
             onClick={onTogglePlay}
             aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="w-16 h-16 rounded-full bg-sage text-canvas flex items-center justify-center hover:bg-sage-hover active:scale-95 transition-all shadow-card"
+            disabled={isLoadingAudio}
+            className="w-16 h-16 rounded-full bg-sage text-canvas flex items-center justify-center hover:bg-sage-hover active:scale-95 transition-all shadow-card disabled:opacity-75"
           >
-            {isPlaying ? (
+            {isLoadingAudio ? (
+              <div className="w-6 h-6 border-3 border-canvas border-t-transparent rounded-full animate-spin" />
+            ) : isPlaying ? (
               <Pause className="w-7 h-7 fill-current" />
             ) : (
               <Play className="w-7 h-7 fill-current ml-1" />
@@ -222,21 +267,23 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             onClick={onNextSong}
             aria-label="Next track"
             className="w-12 h-12 rounded-full flex items-center justify-center text-charcoal hover:bg-canvas-subtle transition-all active:scale-95"
+            title="Next song"
           >
             <SkipForward className="w-5 h-5 fill-current" />
           </button>
 
           {/* Forward 10 seconds */}
           <button
-            onClick={() => setProgress(Math.min(100, progress + 5))}
+            onClick={() => onSeek(Math.min(effectiveDuration, currentTime + 10))}
             aria-label="Forward 10 seconds"
             className="w-11 h-11 rounded-full flex items-center justify-center text-charcoal-muted hover:text-charcoal hover:bg-canvas-subtle transition-all active:scale-95"
+            title="Forward 10s"
           >
             <RotateCw className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Practice Tools: Tempo / Speed & Loop */}
+        {/* Practice Tools: Tempo / Speed, Loop & Volume */}
         <div className="flex items-center justify-around pt-3 border-t border-border/80">
           {/* Tempo Speed Control for Dance Practice */}
           <button
@@ -245,12 +292,12 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             title="Dance rehearsal speed"
           >
             <Gauge className="w-3.5 h-3.5 text-sage" />
-            <span>{speed}x Tempo</span>
+            <span>{playbackRate}x Tempo</span>
           </button>
 
           {/* Loop Mode for Jatiswaram practice */}
           <button
-            onClick={() => setIsLooping(!isLooping)}
+            onClick={onToggleLoop}
             className={cn(
               'flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors',
               isLooping
@@ -260,34 +307,36 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             title="Repeat track"
           >
             <Repeat className="w-3.5 h-3.5" />
-            <span>Repeat</span>
+            <span>{isLooping ? 'Looping' : 'Repeat'}</span>
+          </button>
+
+          {/* Volume toggle (Mute / Unmute) */}
+          <button
+            onClick={() => onSetVolume(volume > 0 ? 0 : 1)}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-charcoal-muted hover:text-charcoal hover:bg-canvas-subtle transition-colors"
+            title={volume > 0 ? 'Mute' : 'Unmute'}
+          >
+            {volume > 0 ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-red-500" />}
           </button>
 
           {/* Share */}
           <button
             onClick={() => {
               if (navigator.share) {
-                navigator.share({
-                  title: song.title,
-                  text: `Practicing ${song.title} (${song.category})`,
-                }).catch(() => {});
+                navigator
+                  .share({
+                    title: song.title,
+                    text: `Kuchipudi Dance: ${song.title}`,
+                  })
+                  .catch(() => {});
               } else {
-                alert(`Share link for ${song.title}`);
+                alert(`Song: ${song.title}`);
               }
             }}
             className="w-9 h-9 rounded-xl flex items-center justify-center text-charcoal-muted hover:text-charcoal hover:bg-canvas-subtle transition-colors"
             title="Share track"
           >
             <Share2 className="w-4 h-4" />
-          </button>
-
-          {/* Download toggle */}
-          <button
-            onClick={() => alert(`"${song.title}" is saved for offline rehearsals.`)}
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-sage hover:bg-canvas-subtle transition-colors"
-            title="Offline saved"
-          >
-            <Download className="w-4 h-4" />
           </button>
         </div>
       </div>
