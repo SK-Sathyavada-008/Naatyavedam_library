@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5E7A68" />
+      <stop offset="100%" stop-color="#445D4D" />
+    </linearGradient>
+    <radialGradient id="ring" cx="50%" cy="50%" r="50%">
+      <stop offset="70%" stop-color="#FAF8F5" stop-opacity="0.12" />
+      <stop offset="100%" stop-color="#FAF8F5" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bg)" />
+  <circle cx="256" cy="256" r="220" fill="url(#ring)" />
+
+  <!-- Classical Ghungroo / Tala bell ring motif -->
+  <circle cx="256" cy="256" r="148" fill="none" stroke="#FAF8F5" stroke-width="8" stroke-dasharray="16 12" stroke-linecap="round" opacity="0.45" />
+
+  <!-- Central Musical Note + Classical Natya Mudra curves -->
+  <g fill="#FAF8F5">
+    <!-- Stylized Anjali / Flame / Mudra rhythm wave -->
+    <path d="M256 128 C280 176 332 208 332 268 C332 316 298 352 256 352 C214 352 180 316 180 268 C180 208 232 176 256 128 Z" opacity="0.95" />
+    <!-- Center teardrop / bell opening -->
+    <circle cx="256" cy="276" r="24" fill="#445D4D" />
+    <path d="M252 276 L252 336" stroke="#445D4D" stroke-width="8" stroke-linecap="round" />
+    
+    <!-- Harmonic sound waves -->
+    <circle cx="256" cy="276" r="10" fill="#FAF8F5" />
+  </g>
+
+  <!-- Sound rhythm accent dots -->
+  <circle cx="160" cy="240" r="10" fill="#EBF1ED" opacity="0.8" />
+  <circle cx="352" cy="240" r="10" fill="#EBF1ED" opacity="0.8" />
+  <circle cx="256" cy="396" r="8" fill="#EBF1ED" opacity="0.8" />
+</svg>
