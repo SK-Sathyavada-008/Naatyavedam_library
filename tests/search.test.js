@@ -97,3 +97,4 @@ test('Fuzzy Search - finds song by original filename', () => {
   assert.ok(results.length > 0);
   assert.equal(results[0].song.id, 's-3');
 });
+

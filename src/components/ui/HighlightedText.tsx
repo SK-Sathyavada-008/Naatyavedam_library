@@ -65,3 +65,4 @@ export const HighlightedText: React.FC<HighlightedTextProps> = ({
 
   return <span className={className}>{nodes}</span>;
 };
+

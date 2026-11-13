@@ -87,3 +87,4 @@ export function searchSongsFuzzy(songs: Song[], query: string): SearchResult[] {
 
   return [];
 }
+
