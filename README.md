@@ -1,38 +1,54 @@
-# Naatyavedam Library 
+# Naatyavedam Library (నాట్యవేదం లైబ్రరీ)
 
 **Naatyavedam Library** is a production-quality, mobile-first Progressive Web Application (PWA) designed for an Indian classical dance (**Kuchipudi**) school. The dance teacher and approved students collaboratively maintain one shared collection of dance music for class rehearsals, performances, and personal practice.
 
 ---
 
 ## Phase 1 — Project Foundation (Completed)
+- React 18 + TypeScript + Vite + Tailwind CSS + Lucide Icons.
+- Custom Kuchipudi design tokens: Warm Ivory (`#FAF8F5`), Charcoal (`#1E2328`), and Muted Sage (`#5E7A68`).
+- PWA setup with Workbox service worker caching and Android standalone manifest.
+- 6 initial navigable application screens.
 
-This phase establishes the foundational architecture, responsive mobile layout, custom design system, PWA configuration, and initial navigable application screens.
+---
 
-### Key Features Implemented:
-1. **Modern PWA Architecture**:
-   - Built with **React 18**, **TypeScript**, and **Vite**.
-   - Fully configured PWA plugin (`vite-plugin-pwa`) with **Workbox** service worker precaching for complete offline app-shell operation.
-   - Web App Manifest configured for Android (`standalone` display, portrait primary orientation, custom 192px/512px icons, theme color `#FAF8F5`).
+## Phase 2 — Local Music Library with Dexie.js (Completed)
 
-2. **Kuchipudi Minimalist Design System**:
-   - **Warm Ivory / Canvas**: `#FAF8F5`, `#F4F0E8`, `#FFFFFF`
-   - **Charcoal Typography**: `#1E2328`, `#5A626A`, `#8C95A0`
-   - **Muted Sage / Mint Accent**: `#5E7A68` (hover `#4C6555`, subtle badge `#EBF1ED`)
-   - **Neutral Soft Borders**: `#E5E0D6`
-   - **Large Touch Targets**: 48px minimum touch targets optimized for mobile use during dance rehearsals.
-   - Soft rounded corners, subtle shadows, and zero visual clutter.
+This phase establishes the offline-first IndexedDB storage, song file importer, and real audio playback engine.
 
-3. **6 Initial Navigable Screens**:
-   - **Welcome / Landing Page**: Classical dance greeting, value pillars, quick demo logins for Teacher or Student.
-   - **Login Page**: Clean username & password credentials form with quick-fill demo shortcuts.
-   - **Registration Page**: Student registration form with approval notice and submission acknowledgement state.
-   - **Main Library Page**: Authentic Kuchipudi sample repertoire (Jatiswaram, Shabdam, Varnam, Tarangam, Thillana, Keerthanam, Pushpanjali, Slokam), live category filters, search bar, favorite toggles, offline status, and music upload modal.
-   - **Full Music Player Page**: Large touch controls, tempo/speed cycling (0.8x - 1.25x for rehearsals), 10s skip/rewind, loop mode, scrubber, and classical vinyl groove artwork.
-   - **Account & Settings Page**: Profile card, role switcher for development evaluation, device storage stats with persistent storage request API, recovery bin view, and activity history.
+### 1. IndexedDB Architecture (Dexie.js)
+Database Name: `NaatyavedamLibraryDB`
+Tables:
+- **`songs`**: Stores song metadata (`id`, `title`, `originalFilename`, `fileType`, `fileSize`, `duration`, `createdAt`, `updatedAt`, `isFavorite`, `isLocalAvailable`, `syncStatus`, `category`, `ragam`, `talam`, `composer`, `isDeleted`, `deletedAt`).
+- **`audioBlobs`**: Stores raw binary `Blob` objects natively in IndexedDB (**never Base64**).
+- **`favorites`**: Tracks favorited tracks.
+- **`downloadInfo`**: Local availability and offline cache state.
+- **`pendingOperations`**: Queue for future cloud synchronization actions.
+- **`appSettings`**: Local key-value store for user sessions and preferences.
 
-4. **Floating Mini-Player Bar**:
-   - Docked above the bottom navigation bar when an audio track is selected.
-   - One-tap play/pause and expand-to-full-screen.
+### 2. Audio Importer
+- **Single & Multiple File Import**: Via device/phone native file picker (`<input type="file" multiple accept="audio/*" />`).
+- **Supported Formats**: MP3, M4A, WAV, AAC, OGG, OPUS, FLAC.
+- **Duration Extraction**: Extracted via `Audio` metadata in the browser.
+- **Non-Destructive**: Original phone files remain 100% untouched; only a binary copy is stored in IndexedDB.
+- **Import Progress & Error States**: Displays live importing progress and friendly error messages for unsupported or corrupted files.
+
+### 3. Functional Audio Player
+- Real audio playback powered by HTML5 Audio from IndexedDB Blobs.
+- Object URL lifecycle management (`URL.createObjectURL` and `URL.revokeObjectURL`) to eliminate memory leaks.
+- Play, pause, seek (scrubber), forward 10s, rewind 10s, previous track, next track.
+- Rehearsal tempo cycling (`0.8x`, `0.9x`, `1.0x`, `1.1x`, `1.25x`) for Kuchipudi practice.
+- Single track loop / repeat mode for continuous Korvai rehearsal.
+- Graceful missing-audio and playback-error handling.
+- Integrated floating `MiniPlayer` and full-screen `PlayerPage`.
+
+### 4. Library Management
+- **Rename Display Title**: Updates `title` in DB without touching `originalFilename`.
+- **Delete / Recovery Bin**: Soft-deletes tracks with full restore capability.
+- **Favorites**: One-tap toggle with persistence.
+- **Sorting**: By Recently Added, Title (A–Z), Title (Z–A), Longest First, Shortest First.
+- **Search**: Real-time filtering by title, Ragam, Talam, and category.
+- **Sample Repertoire Generator**: One-click synthesis of genuine classical WAV audio blobs for testing without needing phone file transfers.
 
 ---
 
@@ -44,69 +60,70 @@ Naatyavedam_library/
 │   ├── icons/
 │   │   ├── icon-192x192.png       # PWA Android icon (192px)
 │   │   ├── icon-512x512.png       # PWA Android icon & maskable (512px)
-│   │   └── icon.svg               # Vector icon
+│   │   └── icon.svg               # Classical Natya vector icon
 │   ├── favicon.ico
 │   └── apple-touch-icon.png
 ├── src/
 │   ├── components/
 │   │   ├── layout/
-│   │   │   ├── AppLayout.tsx      # Main responsive shell wrapper
+│   │   │   ├── AppLayout.tsx      # Responsive shell with safe-area spacing
 │   │   │   ├── BottomNav.tsx      # Mobile bottom navigation bar
-│   │   │   └── TopHeader.tsx      # Top bar with online/offline & role badge
+│   │   │   └── TopHeader.tsx      # Sticky header with connectivity indicator
 │   │   ├── player/
 │   │   │   └── MiniPlayer.tsx     # Floating mini audio bar
-│   │   └── ui/                    # Reusable Design System components
-│   │       ├── Badge.tsx          # Dance category & status pills
-│   │       ├── Button.tsx         # Primary, secondary, ghost, danger buttons
-│   │       ├── Card.tsx           # Subtle bordered cards
-│   │       ├── Input.tsx          # Text & password inputs with icons
-│   │       └── Modal.tsx          # Accessible modal dialogs & sheets
-│   ├── data/
-│   │   └── mockDanceMusic.ts      # Sample Kuchipudi repertoire (isolated)
+│   │   └── ui/                    # Reusable Design System primitives
+│   │       ├── Badge.tsx
+│   │       ├── Button.tsx
+│   │       ├── Card.tsx
+│   │       ├── Input.tsx
+│   │       └── Modal.tsx
+│   ├── hooks/
+│   │   └── useAudioPlayer.ts      # Audio engine hook with object URL cleanup
+│   ├── services/
+│   │   ├── db.ts                  # Dexie.js database & table operations
+│   │   └── audioImporter.ts       # Audio validation, duration extraction & import
 │   ├── pages/
-│   │   ├── LibraryPage.tsx        # Main repertoire list, search & filters
+│   │   ├── LibraryPage.tsx        # Main library with sorting, import & search
 │   │   ├── LoginPage.tsx          # User sign-in
 │   │   ├── PlayerPage.tsx         # Dedicated rehearsal player
 │   │   ├── RegisterPage.tsx       # Student registration
-│   │   ├── SettingsPage.tsx       # Account, storage & admin overview
+│   │   ├── SettingsPage.tsx       # Account, storage & recovery bin
 │   │   └── WelcomePage.tsx        # Landing screen
 │   ├── styles/
-│   │   └── globals.css            # Tailwind directives & safe-area utilities
+│   │   └── globals.css            # Tailwind directives & mobile touch styles
 │   ├── types/
-│   │   └── index.ts               # Shared TypeScript domain models
+│   │   └── index.ts               # Strict TypeScript domain interfaces
 │   ├── utils/
+│   │   ├── audioGenerator.ts      # Classical WAV synthesizer for testing
 │   │   └── index.ts               # Formatting, timing & styling utilities
-│   ├── App.tsx                    # Top-level state coordinator & router
-│   ├── main.tsx                   # React root & PWA service worker registration
-│   └── vite-env.d.ts              # TypeScript environment definitions
-├── index.html                     # HTML5 entry with mobile meta tags
+│   ├── App.tsx                    # Main state coordinator & router
+│   ├── main.tsx                   # Entry point & PWA service worker register
+│   └── vite-env.d.ts              # Vite & PWA type declarations
+├── tests/
+│   └── importer.test.js           # Unit tests for import & audio generation
+├── index.html
 ├── package.json
-├── postcss.config.js
-├── tailwind.config.js             # Design tokens & color system
+├── tailwind.config.js
 ├── tsconfig.json
-├── tsconfig.node.json
-└── vite.config.ts                 # Vite + PWA Workbox configuration
+└── vite.config.ts
 ```
 
 ---
 
-## Running Locally
+## Running Locally & Testing
 
-### 1. Install Dependencies
+### 1. Run Unit Tests
 ```bash
-npm install
+npm test
 ```
 
 ### 2. Start Development Server
 ```bash
 npm run dev
 ```
-Open [http://localhost:5173](http://localhost:5173) in your browser. On Chrome DevTools, toggle Device Mode (select **Pixel 7** or **Samsung Galaxy S20**) to experience the Android-first mobile layout.
 
-### 3. Production Build & PWA Testing
+### 3. Build & Run Production PWA
 ```bash
 npm run build
 npm run preview
 ```
-Visit the preview URL in Chrome or an Android device on the same local network to test PWA installation and offline service worker caching.
-
