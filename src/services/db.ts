@@ -179,6 +179,57 @@ export async function deleteLocalSong(songId: string, softDelete = true): Promis
 }
 
 /**
+ * Bulk delete songs (moves to recovery bin).
+ */
+export async function bulkDeleteSongs(songIds: string[], softDelete = true): Promise<void> {
+  const now = new Date().toISOString();
+  if (softDelete) {
+    await db.transaction('rw', [db.songs], async () => {
+      for (const id of songIds) {
+        await db.songs.update(id, {
+          isDeleted: true,
+          deletedAt: now,
+          updatedAt: now,
+        });
+      }
+    });
+  } else {
+    await db.transaction(
+      'rw',
+      [db.songs, db.audioBlobs, db.favorites, db.downloadInfo],
+      async () => {
+        for (const id of songIds) {
+          await db.songs.delete(id);
+          await db.audioBlobs.delete(id);
+          await db.favorites.delete(id);
+          await db.downloadInfo.delete(id);
+        }
+      }
+    );
+  }
+}
+
+/**
+ * Bulk toggle or set favorite status for multiple songs.
+ */
+export async function bulkFavoriteSongs(songIds: string[], shouldFavorite: boolean): Promise<void> {
+  const now = new Date().toISOString();
+  await db.transaction('rw', [db.songs, db.favorites], async () => {
+    for (const id of songIds) {
+      await db.songs.update(id, {
+        isFavorite: shouldFavorite,
+        updatedAt: now,
+      });
+      if (shouldFavorite) {
+        await db.favorites.put({ id, songId: id, createdAt: now });
+      } else {
+        await db.favorites.delete(id);
+      }
+    }
+  });
+}
+
+/**
  * Restore a song from the recovery bin.
  */
 export async function restoreLocalSong(songId: string): Promise<void> {

@@ -14,6 +14,8 @@ import {
   renameSong,
   deleteLocalSong,
   restoreLocalSong,
+  bulkDeleteSongs,
+  bulkFavoriteSongs,
   saveSongWithBlob,
   getAppSetting,
   setAppSetting,
@@ -30,6 +32,7 @@ export const App: React.FC = () => {
 
   // IndexedDB Data State
   const [songs, setSongs] = useState<Song[]>([]);
+  const [activePlaylist, setActivePlaylist] = useState<Song[]>([]);
   const [deletedSongs, setDeletedSongs] = useState<Song[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [isDbInitialized, setIsDbInitialized] = useState<boolean>(false);
@@ -57,8 +60,9 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Audio Player Hook (Playing REAL audio from IndexedDB)
-  const player = useAudioPlayer(songs, (newSong) => {
+  // Audio Player Hook (Playing REAL audio from IndexedDB, synchronized with active filtered & sorted list)
+  const currentQueue = activePlaylist.length > 0 ? activePlaylist : songs;
+  const player = useAudioPlayer(currentQueue, (newSong) => {
     player.playSong(newSong);
   });
 
@@ -341,6 +345,35 @@ export const App: React.FC = () => {
     }
   };
 
+  // Bulk Delete
+  const handleBulkDelete = async (songIds: string[]) => {
+    if (songIds.length === 0) return;
+    if (player.currentSong && songIds.includes(player.currentSong.id)) {
+      player.pause();
+    }
+    await bulkDeleteSongs(songIds, true);
+    await refreshLibraryFromDB();
+
+    const newLog: ActivityLogEntry = {
+      id: `act-${Date.now()}`,
+      action: 'DELETE',
+      songId: songIds[0],
+      songTitle: `${songIds.length} songs`,
+      performedBy: user?.id || 'local',
+      performedByName: user?.fullName || 'User',
+      timestamp: new Date().toISOString(),
+      details: `Moved ${songIds.length} songs to Recovery Bin`,
+    };
+    setActivityLogs((prev) => [newLog, ...prev]);
+  };
+
+  // Bulk Favorite / Unfavorite
+  const handleBulkFavorite = async (songIds: string[], shouldFavorite: boolean) => {
+    if (songIds.length === 0) return;
+    await bulkFavoriteSongs(songIds, shouldFavorite);
+    await refreshLibraryFromDB();
+  };
+
   const handleRoleSwitch = async (newRole: UserRole) => {
     if (!user) return;
     const updatedUser: UserProfile = {
@@ -433,6 +466,9 @@ export const App: React.FC = () => {
             onRenameSong={handleRenameSong}
             onImportFiles={handleImportFiles}
             onLoadSampleRepertoire={handleLoadSampleRepertoire}
+            onBulkDelete={handleBulkDelete}
+            onBulkFavorite={handleBulkFavorite}
+            onActiveListChange={setActivePlaylist}
             importProgress={importProgress}
             importFailures={importFailures}
             onClearImportFailures={() => setImportFailures([])}

@@ -7,11 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "node --test tests/importer.test.js"
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "clsx": "^2.1.1",
     "dexie": "^4.4.7",
+    "fuse.js": "^7.5.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

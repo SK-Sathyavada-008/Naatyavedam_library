@@ -80,3 +80,4 @@ export function generateClassicalMelodyWav(
 
   return new Blob([buffer], { type: 'audio/wav' });
 }
+

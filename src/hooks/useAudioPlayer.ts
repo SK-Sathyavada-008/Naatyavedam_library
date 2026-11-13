@@ -99,28 +99,35 @@ export function useAudioPlayer(
     };
   }, [revokeActiveUrl]);
 
-  // Handle track ending
+  const playlistRef = useRef<Song[]>(playlist);
+  playlistRef.current = playlist;
+
+  // Handle track ending: follows active filtered and sorted playlist
   const nextSong = useCallback(() => {
-    if (!currentSong || playlist.length === 0) return;
-    const activeList = playlist.filter((s) => !s.isDeleted);
-    const currentIndex = activeList.findIndex((s) => s.id === currentSong.id);
-    if (currentIndex !== -1 && activeList.length > 0) {
-      const nextIndex = (currentIndex + 1) % activeList.length;
-      const nextTrack = activeList[nextIndex];
-      if (onSongChange) onSongChange(nextTrack);
+    const list = playlistRef.current.filter((s) => !s.isDeleted);
+    if (!currentSong || list.length === 0) return;
+    const currentIndex = list.findIndex((s) => s.id === currentSong.id);
+    if (currentIndex !== -1 && list.length > 0) {
+      const nextIndex = (currentIndex + 1) % list.length;
+      const nextTrack = list[nextIndex];
+      if (onSongChange) {
+        onSongChange(nextTrack);
+      }
     }
-  }, [currentSong, playlist, onSongChange]);
+  }, [currentSong, onSongChange]);
 
   const prevSong = useCallback(() => {
-    if (!currentSong || playlist.length === 0) return;
-    const activeList = playlist.filter((s) => !s.isDeleted);
-    const currentIndex = activeList.findIndex((s) => s.id === currentSong.id);
-    if (currentIndex !== -1 && activeList.length > 0) {
-      const prevIndex = (currentIndex - 1 + activeList.length) % activeList.length;
-      const prevTrack = activeList[prevIndex];
-      if (onSongChange) onSongChange(prevTrack);
+    const list = playlistRef.current.filter((s) => !s.isDeleted);
+    if (!currentSong || list.length === 0) return;
+    const currentIndex = list.findIndex((s) => s.id === currentSong.id);
+    if (currentIndex !== -1 && list.length > 0) {
+      const prevIndex = (currentIndex - 1 + list.length) % list.length;
+      const prevTrack = list[prevIndex];
+      if (onSongChange) {
+        onSongChange(prevTrack);
+      }
     }
-  }, [currentSong, playlist, onSongChange]);
+  }, [currentSong, onSongChange]);
 
   // Hook track ended event to loop or advance
   useEffect(() => {
@@ -292,3 +299,4 @@ export function useAudioPlayer(
     clearError,
   };
 }
+

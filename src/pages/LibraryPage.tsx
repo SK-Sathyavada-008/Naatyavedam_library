@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Search,
   X,
@@ -16,12 +16,17 @@ import {
   Music2,
   AlertCircle,
   Sparkles,
+  CheckSquare,
+  Square,
+  Volume2,
 } from 'lucide-react';
-import { Song, UserProfile, SortOption } from '../types';
+import type { Song, UserProfile, SortOption } from '../types/index.ts';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
+import { HighlightedText } from '../components/ui/HighlightedText';
+import { searchSongsFuzzy, type SearchResult } from '../services/fuzzySearch';
 import { formatDuration, cn } from '../utils';
 
 export interface LibraryPageProps {
@@ -37,6 +42,9 @@ export interface LibraryPageProps {
   onRenameSong: (songId: string, newTitle: string) => void;
   onImportFiles: (files: FileList | File[]) => void;
   onLoadSampleRepertoire: () => void;
+  onBulkDelete?: (songIds: string[]) => void;
+  onBulkFavorite?: (songIds: string[], shouldFavorite: boolean) => void;
+  onActiveListChange?: (activeList: Song[]) => void;
   importProgress?: { current: number; total: number; currentFileName: string } | null;
   importFailures?: { fileName: string; reason: string }[];
   onClearImportFailures?: () => void;
@@ -54,14 +62,22 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   onRenameSong,
   onImportFiles,
   onLoadSampleRepertoire,
+  onBulkDelete,
+  onBulkFavorite,
+  onActiveListChange,
   importProgress,
   importFailures = [],
   onClearImportFailures,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [sortBy, setSortBy] = useState<SortOption>('recent');
+
+  // Multi-select state
+  const [isSelectMode, setIsSelectMode] = useState<boolean>(false);
+  const [selectedSongIds, setSelectedSongIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState<boolean>(false);
 
   // Modals & Action States
   const [selectedSongForMenu, setSelectedSongForMenu] = useState<Song | null>(null);
@@ -88,47 +104,111 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       onImportFiles(e.target.files);
-      // Reset input value so same files can be re-selected if desired
       e.target.value = '';
     }
   };
 
-  // Filter & Sort songs
-  const filteredAndSortedSongs = useMemo(() => {
-    const list = songs.filter((song) => {
+  // 1. Filter out deleted songs & apply category/favorites filters
+  const baseFilteredSongs = useMemo(() => {
+    return songs.filter((song) => {
       if (song.isDeleted) return false;
       if (filterFavoritesOnly && !song.isFavorite) return false;
       if (selectedCategory !== 'All' && song.category !== selectedCategory) return false;
-
-      if (!searchQuery.trim()) return true;
-      const query = searchQuery.toLowerCase();
-      return (
-        song.title.toLowerCase().includes(query) ||
-        song.originalFilename.toLowerCase().includes(query) ||
-        (song.ragam && song.ragam.toLowerCase().includes(query)) ||
-        (song.talam && song.talam.toLowerCase().includes(query)) ||
-        (song.composer && song.composer.toLowerCase().includes(query)) ||
-        (song.category && song.category.toLowerCase().includes(query))
-      );
+      return true;
     });
+  }, [songs, filterFavoritesOnly, selectedCategory]);
 
-    // Apply sorting
+  // 2. Apply Fuzzy Search using Fuse.js
+  const searchResults: SearchResult[] = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return baseFilteredSongs.map((song) => ({ song }));
+    }
+    return searchSongsFuzzy(baseFilteredSongs, searchQuery);
+  }, [baseFilteredSongs, searchQuery]);
+
+  // 3. Apply Sorting
+  const finalSortedResults: SearchResult[] = useMemo(() => {
+    const list = [...searchResults];
+
+    // If active search query with Fuse, preserve fuzzy relevance scores unless explicitly sorted
+    if (searchQuery.trim() && sortBy === 'recent') {
+      return list; // Keep fuzzy ranking
+    }
+
     return list.sort((a, b) => {
       switch (sortBy) {
         case 'title-asc':
-          return a.title.localeCompare(b.title);
+          return a.song.title.localeCompare(b.song.title);
         case 'title-desc':
-          return b.title.localeCompare(a.title);
+          return b.song.title.localeCompare(a.song.title);
         case 'duration-desc':
-          return (b.duration || 0) - (a.duration || 0);
+          return (b.song.duration || 0) - (a.song.duration || 0);
         case 'duration-asc':
-          return (a.duration || 0) - (b.duration || 0);
+          return (a.song.duration || 0) - (b.song.duration || 0);
         case 'recent':
         default:
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return (
+            new Date(b.song.createdAt).getTime() - new Date(a.song.createdAt).getTime()
+          );
       }
     });
-  }, [songs, searchQuery, selectedCategory, filterFavoritesOnly, sortBy]);
+  }, [searchResults, sortBy, searchQuery]);
+
+  // Synchronize active song list with player queue for next/prev navigation
+  useEffect(() => {
+    if (onActiveListChange) {
+      const activeSongs = finalSortedResults.map((r) => r.song);
+      onActiveListChange(activeSongs);
+    }
+  }, [finalSortedResults, onActiveListChange]);
+
+  // Multi-Select Handlers
+  const toggleSelectSong = (songId: string) => {
+    setSelectedSongIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(songId)) {
+        next.delete(songId);
+      } else {
+        next.add(songId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = finalSortedResults.map((r) => r.song.id);
+    setSelectedSongIds(new Set(allIds));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedSongIds(new Set());
+  };
+
+  const handleExitSelectMode = () => {
+    setIsSelectMode(false);
+    setSelectedSongIds(new Set());
+  };
+
+  const handleExecuteBulkFavorite = () => {
+    if (selectedSongIds.size === 0) return;
+    const ids = Array.from(selectedSongIds);
+    // If all are favorites, unfavorite; otherwise favorite all
+    const allAreFavorites = ids.every((id) => songs.find((s) => s.id === id)?.isFavorite);
+    if (onBulkFavorite) {
+      onBulkFavorite(ids, !allAreFavorites);
+    }
+    handleExitSelectMode();
+  };
+
+  const handleConfirmBulkDelete = () => {
+    if (selectedSongIds.size === 0) return;
+    const ids = Array.from(selectedSongIds);
+    if (onBulkDelete) {
+      onBulkDelete(ids);
+    }
+    setBulkDeleteModalOpen(false);
+    handleExitSelectMode();
+  };
 
   const handleOpenRename = (song: Song) => {
     setSelectedSongForMenu(null);
@@ -147,7 +227,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
 
   return (
     <div className="flex-1 flex flex-col p-4 sm:p-6 w-full">
-      {/* Hidden file input supporting single & multiple audio files */}
+      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
@@ -158,98 +238,190 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
         id="audio-file-importer"
       />
 
-      {/* Top Search & Add Song Button */}
+      {/* Prominent Search Bar & Action Buttons */}
       <div className="space-y-3 mb-3">
         <div className="flex items-center gap-2">
+          {/* Prominent Search Bar */}
           <div className="relative flex-1">
             <Input
               type="text"
-              placeholder="Search by title, ragam, talam..."
+              placeholder="Search by title, ragam, filename..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              leftIcon={<Search className="w-4 h-4" />}
+              leftIcon={<Search className="w-5 h-5 text-charcoal-muted" />}
               rightIcon={
                 searchQuery ? (
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="p-1 hover:text-charcoal"
+                    className="p-1 text-charcoal-muted hover:text-charcoal focus:outline-none"
                     aria-label="Clear search"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 ) : undefined
               }
-              className="bg-canvas-card"
+              className="bg-canvas-card text-base py-3 pl-12 pr-10 shadow-subtle border-border focus:border-sage"
             />
           </div>
 
-          {/* Add Song Button */}
+          {/* Multi-Select Toggle Button */}
           <Button
-            variant="primary"
+            variant={isSelectMode ? 'primary' : 'secondary'}
             size="md"
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 flex-shrink-0 px-3.5 shadow-subtle"
-            title="Import Audio Files from Device"
+            onClick={() => {
+              if (isSelectMode) {
+                handleExitSelectMode();
+              } else {
+                setIsSelectMode(true);
+              }
+            }}
+            className="flex-shrink-0 px-3.5 text-xs font-semibold"
+            title="Toggle multiple selection"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Song</span>
+            {isSelectMode ? 'Done' : 'Select'}
           </Button>
+
+          {/* Add Song Button */}
+          {!isSelectMode && (
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 flex-shrink-0 px-3.5 shadow-subtle text-xs font-semibold"
+              title="Import Audio Files from Device"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add Song</span>
+            </Button>
+          )}
         </div>
 
-        {/* Filters & Sorting Row */}
-        <div className="flex items-center justify-between gap-2">
-          {/* Filter Chips Horizontal Scroll */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-1">
-            {/* Quick toggle favorites */}
-            <button
-              onClick={() => setFilterFavoritesOnly(!filterFavoritesOnly)}
-              className={cn(
-                'px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1 border transition-all duration-150',
-                filterFavoritesOnly
-                  ? 'bg-red-50 text-red-700 border-red-200'
-                  : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
-              )}
-            >
-              <Heart className={cn('w-3.5 h-3.5', filterFavoritesOnly && 'fill-current text-red-600')} />
-              <span>Favorites</span>
-            </button>
-
-            <div className="w-[1px] h-4 bg-border mx-1 flex-shrink-0" />
-
-            {/* Dance Categories */}
-            {categories.map((cat) => (
+        {/* Multi-Select Action Banner (Visible when isSelectMode is active) */}
+        {isSelectMode ? (
+          <div className="p-3 bg-sage-light/70 border border-sage-border rounded-xl flex items-center justify-between gap-2 shadow-subtle animate-in fade-in duration-150">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-sage-hover">
+                {selectedSongIds.size} of {finalSortedResults.length} selected
+              </span>
               <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
+                onClick={
+                  selectedSongIds.size === finalSortedResults.length
+                    ? handleDeselectAll
+                    : handleSelectAll
+                }
+                className="text-xs text-charcoal-muted underline hover:text-charcoal ml-2 font-medium"
+              >
+                {selectedSongIds.size === finalSortedResults.length ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExecuteBulkFavorite}
+                disabled={selectedSongIds.size === 0}
+                className="text-xs flex items-center gap-1 px-2.5 h-8"
+                title="Favorite Selected"
+              >
+                <Heart className="w-3.5 h-3.5 text-red-500 fill-current" />
+                <span className="hidden xs:inline">Favorite</span>
+              </Button>
+
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setBulkDeleteModalOpen(true)}
+                disabled={selectedSongIds.size === 0}
+                className="text-xs flex items-center gap-1 px-2.5 h-8"
+                title="Delete Selected"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span className="hidden xs:inline">Delete</span>
+              </Button>
+
+              <button
+                onClick={handleExitSelectMode}
+                className="p-1 text-charcoal-muted hover:text-charcoal ml-1"
+                aria-label="Cancel selection"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* Simple Filter and Sort Controls */
+          <div className="flex items-center justify-between gap-2">
+            {/* Quick Filters */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none flex-1">
+              <button
+                onClick={() => {
+                  setFilterFavoritesOnly(false);
+                  setSelectedCategory('All');
+                }}
                 className={cn(
-                  'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all duration-150',
-                  selectedCategory === cat
+                  'px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-all duration-150',
+                  !filterFavoritesOnly && selectedCategory === 'All'
                     ? 'bg-sage text-canvas border-sage'
                     : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
                 )}
               >
-                {cat}
+                All Songs
               </button>
-            ))}
-          </div>
 
-          {/* Sort Dropdown */}
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <ArrowUpDown className="w-3.5 h-3.5 text-charcoal-muted" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortOption)}
-              className="text-xs bg-canvas-card border border-border text-charcoal rounded-lg px-2 py-1 focus:outline-none focus:border-sage"
-              aria-label="Sort repertoire"
-            >
-              <option value="recent">Recently Added</option>
-              <option value="title-asc">Title (A – Z)</option>
-              <option value="title-desc">Title (Z – A)</option>
-              <option value="duration-desc">Longest First</option>
-              <option value="duration-asc">Shortest First</option>
-            </select>
+              <button
+                onClick={() => setFilterFavoritesOnly(!filterFavoritesOnly)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap flex items-center gap-1 border transition-all duration-150',
+                  filterFavoritesOnly
+                    ? 'bg-red-50 text-red-700 border-red-200'
+                    : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
+                )}
+              >
+                <Heart className={cn('w-3.5 h-3.5', filterFavoritesOnly && 'fill-current text-red-600')} />
+                <span>Favorites</span>
+              </button>
+
+              <div className="w-[1px] h-4 bg-border mx-1 flex-shrink-0" />
+
+              {/* Dance Categories */}
+              {categories.slice(1).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => {
+                    setFilterFavoritesOnly(false);
+                    setSelectedCategory(selectedCategory === cat ? 'All' : cat);
+                  }}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all duration-150',
+                    selectedCategory === cat
+                      ? 'bg-sage text-canvas border-sage'
+                      : 'bg-canvas-card text-charcoal-muted border-border hover:border-border-strong'
+                  )}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Sort Selector */}
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-charcoal-muted" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortOption)}
+                className="text-xs bg-canvas-card border border-border text-charcoal rounded-lg px-2 py-1 focus:outline-none focus:border-sage"
+                aria-label="Sort repertoire"
+              >
+                <option value="recent">Recently Added</option>
+                <option value="title-asc">Title (A – Z)</option>
+                <option value="title-desc">Title (Z – A)</option>
+                <option value="duration-desc">Longest First</option>
+                <option value="duration-asc">Shortest First</option>
+              </select>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Import Failures Alert Banner */}
@@ -280,22 +452,50 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
         </div>
       )}
 
-      {/* Header Info: Track count */}
+      {/* Header Info: Results count & Search Active indicator */}
       <div className="flex items-center justify-between py-1 mb-2 px-0.5">
         <span className="text-xs font-medium text-charcoal-muted">
-          {filteredAndSortedSongs.length} {filteredAndSortedSongs.length === 1 ? 'song' : 'songs'} in local library
+          {searchQuery ? (
+            <span>
+              Found <strong>{finalSortedResults.length}</strong> matching &ldquo;{searchQuery}&rdquo;
+            </span>
+          ) : (
+            <span>
+              {finalSortedResults.length} {finalSortedResults.length === 1 ? 'song' : 'songs'} in library
+            </span>
+          )}
         </span>
+
         <span className="text-[11px] text-sage font-medium bg-sage-light/70 px-2 py-0.5 rounded-md flex items-center gap-1">
           <CheckCircle className="w-3 h-3" />
-          <span>IndexedDB Local Storage</span>
+          <span>Offline Fuzzy Search</span>
         </span>
       </div>
 
-      {/* Song List or Empty State */}
+      {/* Song List or Empty / No-Results States */}
       <div className="space-y-2">
-        {filteredAndSortedSongs.length === 0 ? (
+        {finalSortedResults.length === 0 ? (
           <div className="text-center py-16 px-4 bg-canvas-card border border-border/80 rounded-2xl my-2">
-            {songs.filter((s) => !s.isDeleted).length === 0 ? (
+            {searchQuery ? (
+              // Friendly No-Results State
+              <div className="max-w-sm mx-auto">
+                <Search className="w-12 h-12 text-charcoal-subtle mx-auto mb-3 opacity-60" />
+                <h3 className="text-base font-semibold text-charcoal">
+                  No songs matching &ldquo;{searchQuery}&rdquo;
+                </h3>
+                <p className="text-xs text-charcoal-muted mt-1 leading-relaxed">
+                  Try checking for typos or searching by dance category (e.g. <em>Jatiswaram</em> or <em>Shabdam</em>).
+                </p>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                  className="mt-4"
+                >
+                  Clear Search Query
+                </Button>
+              </div>
+            ) : songs.filter((s) => !s.isDeleted).length === 0 ? (
               // Truly empty library
               <div className="flex flex-col items-center max-w-sm mx-auto">
                 <div className="w-16 h-16 rounded-2xl bg-sage-light text-sage flex items-center justify-center mb-4">
@@ -330,91 +530,123 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 </div>
               </div>
             ) : (
-              // Filter/Search empty
+              // Filter empty
               <div>
                 <FileMusic className="w-12 h-12 text-charcoal-subtle mx-auto mb-3" />
-                <h3 className="text-base font-semibold text-charcoal">No matching songs</h3>
+                <h3 className="text-base font-semibold text-charcoal">No songs found</h3>
                 <p className="text-sm text-charcoal-muted mt-1 max-w-xs mx-auto">
-                  {searchQuery
-                    ? `No songs matched "${searchQuery}".`
-                    : 'No songs found with current category and filters.'}
+                  No compositions match the selected filter.
                 </p>
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    setSearchQuery('');
                     setSelectedCategory('All');
                     setFilterFavoritesOnly(false);
                   }}
                   className="mt-4"
                 >
-                  Reset Filters
+                  Show All Songs
                 </Button>
               </div>
             )}
           </div>
         ) : (
-          filteredAndSortedSongs.map((song) => {
+          finalSortedResults.map(({ song, matches }) => {
             const isThisPlaying = currentSong?.id === song.id && isPlaying;
             const isThisSelected = currentSong?.id === song.id;
+            const isChecked = selectedSongIds.has(song.id);
 
             return (
               <div
                 key={song.id}
                 className={cn(
                   'group flex items-center justify-between p-3 sm:p-3.5 rounded-xl border transition-all duration-150',
-                  isThisSelected
-                    ? 'bg-sage-light/40 border-sage-border shadow-subtle ring-1 ring-sage/30'
-                    : 'bg-canvas-card border-border hover:border-border-strong'
+                  isChecked && 'bg-sage-light/50 border-sage',
+                  !isChecked && isThisPlaying && 'bg-sage-light/40 border-sage ring-2 ring-sage/40 shadow-card',
+                  !isChecked && !isThisPlaying && isThisSelected && 'bg-canvas-subtle border-border-strong',
+                  !isChecked && !isThisSelected && 'bg-canvas-card border-border hover:border-border-strong'
                 )}
               >
-                {/* Play Button & Song Info (Easy Scanning) */}
+                {/* Multi-Select Checkbox OR Play Trigger */}
+                {isSelectMode ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleSelectSong(song.id)}
+                    className="w-10 h-10 flex items-center justify-center text-sage flex-shrink-0 mr-2 focus:outline-none"
+                    aria-label={isChecked ? `Deselect ${song.title}` : `Select ${song.title}`}
+                  >
+                    {isChecked ? (
+                      <CheckSquare className="w-6 h-6 fill-sage-light text-sage" />
+                    ) : (
+                      <Square className="w-6 h-6 text-charcoal-subtle" />
+                    )}
+                  </button>
+                ) : null}
+
+                {/* Song Row Content */}
                 <div
                   className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
                   onClick={() => {
-                    if (isThisSelected) {
+                    if (isSelectMode) {
+                      toggleSelectSong(song.id);
+                    } else if (isThisSelected) {
                       onTogglePlay();
                     } else {
                       onPlaySong(song);
                     }
                   }}
                 >
-                  {/* Play/Pause round trigger */}
-                  <button
-                    type="button"
-                    aria-label={isThisPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
-                    className={cn(
-                      'w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 shadow-subtle',
-                      isThisPlaying
-                        ? 'bg-sage text-canvas'
-                        : 'bg-canvas-subtle text-charcoal group-hover:bg-sage-light group-hover:text-sage-hover'
-                    )}
-                  >
-                    {isThisPlaying ? (
-                      isLoadingAudio ? (
-                        <div className="w-4 h-4 border-2 border-canvas border-t-transparent rounded-full animate-spin" />
+                  {/* Play Button with active audio indicator */}
+                  {!isSelectMode && (
+                    <button
+                      type="button"
+                      aria-label={isThisPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
+                      className={cn(
+                        'w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform active:scale-95 shadow-subtle',
+                        isThisPlaying
+                          ? 'bg-sage text-canvas'
+                          : 'bg-canvas-subtle text-charcoal group-hover:bg-sage-light group-hover:text-sage-hover'
+                      )}
+                    >
+                      {isThisPlaying ? (
+                        isLoadingAudio ? (
+                          <div className="w-4 h-4 border-2 border-canvas border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Pause className="w-5 h-5 fill-current" />
+                        )
                       ) : (
-                        <Pause className="w-5 h-5 fill-current" />
-                      )
-                    ) : (
-                      <Play className="w-5 h-5 fill-current ml-0.5" />
-                    )}
-                  </button>
+                        <Play className="w-5 h-5 fill-current ml-0.5" />
+                      )}
+                    </button>
+                  )}
 
-                  {/* Title prioritized for easy scanning */}
+                  {/* Title & Dance Metadata (With Highlighted Text) */}
                   <div className="min-w-0 flex-1 text-left">
                     <div className="flex items-center gap-2">
                       <h4
                         className={cn(
                           'text-sm sm:text-base font-semibold truncate leading-tight',
-                          isThisSelected ? 'text-sage-hover font-bold' : 'text-charcoal'
+                          isThisPlaying ? 'text-sage-hover font-bold' : 'text-charcoal'
                         )}
                         title={song.title}
                       >
-                        {song.title}
+                        <HighlightedText
+                          text={song.title}
+                          fieldKey="title"
+                          matches={matches}
+                        />
                       </h4>
-                      {song.isLocalAvailable && (
+
+                      {/* Playing sound indicator badge */}
+                      {isThisPlaying && (
+                        <span className="flex items-center text-[10px] text-sage font-bold uppercase tracking-wider bg-canvas px-1.5 py-0.5 rounded-full ring-1 ring-sage/30 flex-shrink-0">
+                          <Volume2 className="w-3 h-3 mr-1 animate-pulse" />
+                          Playing
+                        </span>
+                      )}
+
+                      {song.isLocalAvailable && !isThisPlaying && (
                         <span title="Stored locally in IndexedDB">
                           <CheckCircle className="w-3.5 h-3.5 text-sage flex-shrink-0" />
                         </span>
@@ -430,13 +662,19 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                       {song.ragam && <span>• {song.ragam}</span>}
                       {song.talam && <span>({song.talam})</span>}
                       {!song.ragam && !song.talam && (
-                        <span className="truncate text-charcoal-subtle">{song.originalFilename}</span>
+                        <span className="truncate text-charcoal-subtle">
+                          <HighlightedText
+                            text={song.originalFilename}
+                            fieldKey="originalFilename"
+                            matches={matches}
+                          />
+                        </span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Right Actions: Optional Duration, Favorite control, More-options menu */}
+                {/* Right Actions: Duration, Favorite control, More-options */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
                   {song.duration !== null && (
                     <span className="text-xs text-charcoal-muted font-medium px-1 hidden xs:inline">
@@ -459,13 +697,15 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                   </button>
 
                   {/* More-options menu button */}
-                  <button
-                    onClick={() => setSelectedSongForMenu(song)}
-                    aria-label="Song options"
-                    className="w-9 h-9 rounded-lg flex items-center justify-center text-charcoal-subtle hover:text-charcoal hover:bg-canvas-subtle transition-colors"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
+                  {!isSelectMode && (
+                    <button
+                      onClick={() => setSelectedSongForMenu(song)}
+                      aria-label="Song options"
+                      className="w-9 h-9 rounded-lg flex items-center justify-center text-charcoal-subtle hover:text-charcoal hover:bg-canvas-subtle transition-colors"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -496,6 +736,23 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
           </div>
         </Modal>
       )}
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Modal
+        isOpen={bulkDeleteModalOpen}
+        onClose={() => setBulkDeleteModalOpen(false)}
+        title="Move to Recovery Bin?"
+        description={`Are you sure you want to move ${selectedSongIds.size} selected songs to the Recovery Bin?`}
+      >
+        <div className="pt-2 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setBulkDeleteModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={handleConfirmBulkDelete}>
+            Move to Recovery Bin
+          </Button>
+        </div>
+      </Modal>
 
       {/* More Options Modal / Bottom Sheet */}
       {selectedSongForMenu && (
