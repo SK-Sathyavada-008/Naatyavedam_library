@@ -1,29 +1,8 @@
-# Naatyavedam Library (నాట్యవేదం లైబ్రరీ)
+# Naatyavedam Library 
 
-> A mobile-first, offline-ready rehearsal audio player and collaborative repertoire management system engineered specifically for Indian classical dance (**Kuchipudi**) academies.
+> A mobile-first, offline-ready rehearsal audio player and collaborative repertoire management system.
 
-Guru Veda (Dance Teacher) and approved dance students collaboratively maintain one unified repertoire of classical dance tracks for stage shows, daily academy rehearsals, and home practice.
-
----
-
-## Why Naatyavedam? (The Problem It Solves)
-
-Generic music streaming platforms (Spotify, Apple Music, YouTube Music) and file drives (Google Drive, Dropbox) fail Indian classical dance teachers and students in real-world rehearsals:
-
-1. **Rehearsal Tempo Without Pitch Distortion**: Dancers learn intricate *adavus*, *jatis*, and *chollukattus* at slower speeds (`0.8x` or `0.9x`) before transitioning to full stage speed (`1.0x` or `1.15x`). Standard media players shift the audio pitch, turning the singer's voice into high-pitched distortion. Naatyavedam uses high-quality Web Audio time-stretching to adjust speed while preserving musical pitch.
-2. **Zero-Internet Green Rooms & Stages**: Classical dance performance halls, auditorium green rooms, and temple stages often have zero cellular connectivity. Naatyavedam stores raw binary audio tracks directly inside the device's **IndexedDB**, guaranteeing that every rehearsal track plays instantly offline with zero latency.
-3. **Structured by Classical Dance Margam**: Dance music cannot be organized by pop albums or artists. Naatyavedam organizes repertoire strictly by classical performance sequence:
-   * *Pushpanjali*
-   * *Jatiswaram*
-   * *Shabdam*
-   * *Varnam*
-   * *Keerthanam*
-   * *Tarangam (Brass Plate Dance)*
-   * *Thillana*
-   * *Mangalam / Slokam*
-   * *Practice Beats & Talam*
-4. **Stage Programs & Repertoire Sequencing**: Assembling an *Arangetram* or Annual Day show requires sequencing 8–10 tracks, adding stage-specific edits (e.g., a 12-minute abridged Varnam), and reordering pieces without creating duplicate audio bloat in the main library.
-5. **Eliminating WhatsApp Audio Chaos**: Gurus and students constantly share rehearsal snippets via WhatsApp, where files get lost in unorganized phone storage. Naatyavedam integrates directly with Android's system share sheet, allowing students to tap "Share" on any audio file in WhatsApp or Files and import it straight into the academy's library.
+Guru (Dance Teacher and approved dance students collaboratively maintain one unified repertoire of classical dance tracks for stage shows, daily academy rehearsals, and home practice.
 
 ---
 
@@ -36,12 +15,11 @@ Generic music streaming platforms (Spotify, Apple Music, YouTube Music) and file
 * **Synchronized Queue**: Floating `MiniPlayer` and full-screen `PlayerPage` dynamically follow filtered search results and custom program sequences.
 
 ### 2. Unified Cloud Repertoire (Supabase + Dexie)
-* **Single Shared Collection**: When Guru Veda or Student SK uploads a track, it synchronizes across all approved academy members.
-* **Metadata Rich**: Tracks store Raagam, Taalam, Composer, Choreographer, Category, and Practice Notes.
+* **Single Shared Collection**: When Guru or Student uploads a track, it synchronizes across all approved members.
 * **Offline-First**: Every track uploaded or downloaded is cached locally in IndexedDB. Internet is only required to synchronize changes.
 
 ### 3. Collaborative Stage Programs
-* **Performance Sequencing**: Group repertoire pieces into distinct programs (e.g., *"Annual Day 2027"*, *"Kuchipudi Festival Hyderabad"*).
+* **Performance Sequencing**: Group repertoire pieces into distinct programs (e.g., *"Naadaneerajanam"*, *"Ganesh Chaturthi Performance"*).
 * **Drag-and-Drop Reordering**: Rearrange stage track orders on the fly with touch drag-and-drop or Move Up / Move Down controls.
 * **Stage-Specific Audio Edits**: Attach custom trimmed recordings to a program item without duplicating or altering the original library master track.
 * **Program Duplication**: Clone an entire stage sequence for different batches of senior and junior students with one tap.
@@ -52,7 +30,7 @@ Generic music streaming platforms (Spotify, Apple Music, YouTube Music) and file
 * **Standalone Home Screen App**: Installable as a native app on Android Chrome with no browser address bars or tabs.
 
 ### 5. Two-Tier Role-Based Security & Recovery Bin
-* **Guru (Teacher) Account**: Full administrative rights. Guru Veda initializes the school account securely via a server-side SQL function, approves new student registrations, generates 6-character password reset codes, and manages student access.
+* **Guru (Teacher) Account**: Full administrative rights. Guru initializes the school account securely via a server-side SQL function, approves new student registrations, generates 6-character password reset codes, and manages student access.
 * **Dance Students**: Can register with username/password, browse the entire repertoire after teacher approval, upload music, rename tracks, soft-delete tracks to the recovery bin, and manage stage programs.
 * **Shared Recovery Bin (Trash)**: To protect against accidental deletions during rehearsals, deleted songs are retained in a shared recovery bin for **30 days** showing who deleted the track and when. Any approved member can restore songs. Only the Teacher has permission to permanently purge songs.
 
@@ -195,14 +173,7 @@ In your Supabase project dashboard, open the **SQL Editor** and run the migratio
 2. `20261114_phase5_collaborative_programs.sql`: Collaborative dance stage programs, sequences, and items.
 3. `20261114_phase5_shared_music_library.sql`: Songs, files, storage buckets, and RLS policies.
 
-### 4. Initialize Teacher Account (Guru Veda)
-In your Supabase SQL Editor, run:
-```sql
-SELECT create_initial_teacher_account('veda', 'naatyavedam', 'Guru Veda');
-```
-This securely creates the teacher profile with role `TEACHER` and prevents unauthorized public teacher creation.
-
-### 5. Start Development Server
+### 4. Start Development Server
 ```bash
 npm run dev
 ```
@@ -218,7 +189,7 @@ npm test
 ```
 
 ### Test Coverage Highlights:
-* **Production Readiness Checklist (16 tests)**: Simulates 1 Teacher (Veda), 2 Students (SK and Priya), 2 Android Devices, 1 Newly Installed Device, offline mode, slow network latency, interrupted uploads/downloads, duplicate uploads, rename conflicts, student access revocation, password reset verification, and native file sharing.
+* **Production Readiness Checklist (16 tests)**: Simulates 1 Teacher, 2 Students, 2 Android Devices, 1 Newly Installed Device, offline mode, slow network latency, interrupted uploads/downloads, duplicate uploads, rename conflicts, student access revocation, password reset verification, and native file sharing.
 * **Backup & Recovery (6 tests)**: ZIP local headers, central directory offsets, EOCD signatures, archive extraction, corrupt archive rejection, and storage calculation.
 * **Shared Cloud Library (7 tests)**: Collaborative uploads, cross-user renames, soft-deletes, restore permissions, and teacher-only permanent deletion.
 * **Offline Sync Manager (6 tests)**: Local-first persistence, offline mutation queuing, conflict handling, and non-destructive metadata sync.
@@ -264,4 +235,4 @@ Builds the production bundle into `dist/`, including minified assets, PWA manife
 
 ## License
 
-Created for Naatyavedam Kuchipudi Dance Academy. All rights reserved.
+Created for Naatyavedam Kuchipudi Dance Institute. 
