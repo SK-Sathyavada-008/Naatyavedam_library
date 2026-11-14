@@ -9,6 +9,20 @@ export interface UserProfile {
   role: UserRole;
   status: UserStatus;
   createdAt: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  removedAt?: string;
+}
+
+export interface PasswordResetRequest {
+  id: string;
+  userId: string;
+  username: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED';
+  resetCode?: string;
+  expiresAt?: string;
+  createdAt: string;
+  reviewedAt?: string;
 }
 
 export type DanceCategory =

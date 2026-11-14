@@ -12,3 +12,4 @@ test('Supabase Client - initializes successfully with credentials', () => {
   assert.equal(typeof client.auth.signUp, 'function');
   assert.equal(typeof client.storage.from, 'function');
 });
+

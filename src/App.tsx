@@ -6,6 +6,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { PlayerPage } from './pages/PlayerPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { PendingApprovalPage } from './pages/PendingApprovalPage';
 import { AppView, Song, UserProfile, UserRole, ActivityLogEntry } from './types';
 import {
   getLocalSongs,
@@ -24,11 +25,13 @@ import { importAudioFiles } from './services/audioImporter';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { generateClassicalMelodyWav } from './utils/audioGenerator';
 import { MOCK_TEACHER_USER, MOCK_STUDENT_USER } from './data/mockDanceMusic';
+import { revalidateSession, signOutUser } from './services/auth';
 
 export const App: React.FC = () => {
   // Navigation & Authentication state
   const [currentView, setCurrentView] = useState<AppView>('welcome');
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [revocationMessage, setRevocationMessage] = useState<string | null>(null);
 
   // IndexedDB Data State
   const [songs, setSongs] = useState<Song[]>([]);
@@ -66,6 +69,29 @@ export const App: React.FC = () => {
     player.playSong(newSong);
   });
 
+  // Revalidate live session with backend
+  const checkLiveSession = useCallback(async (localUser: UserProfile | null) => {
+    if (!navigator.onLine) return; // Keep offline session if device has no network
+
+    try {
+      const backendProfile = await revalidateSession();
+
+      if (backendProfile) {
+        setUser(backendProfile);
+        await setAppSetting('currentUser', backendProfile);
+      } else if (localUser) {
+        // Session was revoked or student was removed/rejected
+        console.warn('[Auth] Session revoked or invalid. Logging out.');
+        setUser(null);
+        await setAppSetting('currentUser', null);
+        setRevocationMessage('Your account access has been revoked or your session has expired.');
+        setCurrentView('login');
+      }
+    } catch (err) {
+      console.error('[Auth] Error revalidating session:', err);
+    }
+  }, []);
+
   // Initial load from IndexedDB and persistent user session
   useEffect(() => {
     async function init() {
@@ -73,55 +99,69 @@ export const App: React.FC = () => {
       const savedUser = await getAppSetting<UserProfile | null>('currentUser', null);
       if (savedUser) {
         setUser(savedUser);
-        setCurrentView('library');
+        if (savedUser.status === 'APPROVED') {
+          setCurrentView('library');
+        }
       }
 
       // 2. Load songs from Dexie
       await refreshLibraryFromDB();
       setIsDbInitialized(true);
+
+      // 3. Verify session status with Supabase backend
+      await checkLiveSession(savedUser);
     }
     init();
-  }, [refreshLibraryFromDB]);
+  }, [refreshLibraryFromDB, checkLiveSession]);
 
-  // Online / offline listeners
+  // Online / offline listeners & focus session revalidation
   useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
+    const handleOnline = () => {
+      setIsOnline(true);
+      checkLiveSession(user);
+    };
     const handleOffline = () => setIsOnline(false);
+    const handleFocus = () => {
+      if (user) {
+        checkLiveSession(user);
+      }
+    };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleFocus);
     };
-  }, []);
+  }, [user, checkLiveSession]);
 
   // Quick Demo / Local Login Handler
   const handleQuickLogin = async (role: UserRole) => {
     const profile = role === 'TEACHER' ? MOCK_TEACHER_USER : MOCK_STUDENT_USER;
     setUser(profile);
     await setAppSetting('currentUser', profile);
+    setRevocationMessage(null);
     setCurrentView('library');
   };
 
-  const handleLoginSuccess = async (role: UserRole, username: string) => {
-    const profile: UserProfile = {
-      id: role === 'TEACHER' ? 'teacher-001' : 'student-001',
-      username,
-      fullName: role === 'TEACHER' ? 'Guru Keerthana (Dance Teacher)' : `${username} (Student)`,
-      role,
-      status: 'APPROVED',
-      createdAt: new Date().toISOString(),
-    };
+  const handleLoginSuccess = async (profile: UserProfile) => {
     setUser(profile);
     await setAppSetting('currentUser', profile);
-    setCurrentView('library');
+    setRevocationMessage(null);
+
+    if (profile.status === 'APPROVED') {
+      setCurrentView('library');
+    }
   };
 
   const handleSignOut = async () => {
+    await signOutUser();
     setUser(null);
     await setAppSetting('currentUser', null);
+    setRevocationMessage(null);
     player.pause();
     setCurrentView('welcome');
   };
@@ -283,7 +323,7 @@ export const App: React.FC = () => {
     setActivityLogs((prev) => [newLog, ...prev]);
   };
 
-  // Delete song (move to recovery bin)
+  // Delete song (move to recovery bin / trash) - Allowed for both Teacher and Student
   const handleDeleteSong = async (songId: string) => {
     const target = songs.find((s) => s.id === songId);
     if (!target) return;
@@ -310,7 +350,7 @@ export const App: React.FC = () => {
     setActivityLogs((prev) => [newLog, ...prev]);
   };
 
-  // Restore song from recovery bin
+  // Restore song from recovery bin - Allowed for both Teacher and Student
   const handleRestoreSong = async (songId: string) => {
     const target = deletedSongs.find((s) => s.id === songId);
     if (!target) return;
@@ -332,6 +372,38 @@ export const App: React.FC = () => {
     setActivityLogs((prev) => [newLog, ...prev]);
   };
 
+  // Permanent Delete Song - STRICTLY TEACHER ONLY
+  const handlePermanentlyDeleteSong = async (songId: string) => {
+    if (user?.role !== 'TEACHER') {
+      alert('Unauthorized: Only the dance teacher can permanently delete songs from the repertoire.');
+      return;
+    }
+
+    const target = deletedSongs.find((s) => s.id === songId);
+    if (!target) return;
+
+    if (player.currentSong?.id === songId) {
+      player.pause();
+    }
+
+    await deleteLocalSong(songId, false);
+    await refreshLibraryFromDB();
+  };
+
+  // Empty Recovery Bin - STRICTLY TEACHER ONLY
+  const handleEmptyRecoveryBin = async () => {
+    if (user?.role !== 'TEACHER') {
+      alert('Unauthorized: Only the dance teacher can empty the recovery bin.');
+      return;
+    }
+
+    const ids = deletedSongs.map((s) => s.id);
+    if (ids.length === 0) return;
+
+    await bulkDeleteSongs(ids, false);
+    await refreshLibraryFromDB();
+  };
+
   // Toggle favorite
   const handleToggleFavorite = async (songId: string) => {
     await toggleSongFavorite(songId);
@@ -345,7 +417,7 @@ export const App: React.FC = () => {
     }
   };
 
-  // Bulk Delete
+  // Bulk Delete (Moves to Recovery Bin)
   const handleBulkDelete = async (songIds: string[]) => {
     if (songIds.length === 0) return;
     if (player.currentSong && songIds.includes(player.currentSong.id)) {
@@ -396,6 +468,21 @@ export const App: React.FC = () => {
     );
   }
 
+  // If a logged-in user is PENDING approval, display the Pending Approval screen
+  if (user && user.status === 'PENDING') {
+    return (
+      <PendingApprovalPage
+        user={user}
+        onApproved={async (updated) => {
+          setUser(updated);
+          await setAppSetting('currentUser', updated);
+          setCurrentView('library');
+        }}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
   // Render view
   const renderViewContent = () => {
     switch (currentView) {
@@ -411,6 +498,7 @@ export const App: React.FC = () => {
           <LoginPage
             onNavigate={setCurrentView}
             onLoginSuccess={handleLoginSuccess}
+            revocationMessage={revocationMessage}
           />
         );
       case 'register':
@@ -448,6 +536,8 @@ export const App: React.FC = () => {
             deletedSongs={deletedSongs}
             activityLogs={activityLogs}
             onRestoreSong={handleRestoreSong}
+            onPermanentlyDeleteSong={handlePermanentlyDeleteSong}
+            onEmptyRecoveryBin={handleEmptyRecoveryBin}
           />
         );
       case 'library':

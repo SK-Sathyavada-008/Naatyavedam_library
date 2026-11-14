@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { User, Lock, ArrowLeft, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { User, Lock, ArrowLeft, CheckCircle2, ShieldAlert, AlertCircle } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { AppView } from '../types';
+import { registerStudent, validateUsername, validatePassword } from '../services/auth';
 
 export interface RegisterPageProps {
   onNavigate: (view: AppView) => void;
@@ -13,31 +14,51 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim()) {
-      setError('Please provide your full name');
-      return;
-    }
-    if (!username.trim() || username.length < 3) {
-      setError('Username must be at least 3 characters');
-      return;
-    }
-    if (!password || password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    setError(null);
+
+    const cleanFullName = fullName.trim();
+    if (!cleanFullName) {
+      setError('Please provide your full name.');
       return;
     }
 
-    // In Phase 1 local development state, simulate successful registration request
-    setError('');
-    setIsSubmitted(true);
+    const userCheck = validateUsername(username);
+    if (!userCheck.isValid) {
+      setError(userCheck.error || 'Invalid username.');
+      return;
+    }
+
+    const passCheck = validatePassword(password);
+    if (!passCheck.isValid) {
+      setError(passCheck.error || 'Invalid password.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await registerStudent(cleanFullName, username, password);
+      if (!result.success) {
+        setError(result.error || 'Failed to submit registration request.');
+        return;
+      }
+
+      setIsSubmitted(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Registration failed.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -59,24 +80,26 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
             <h3 className="text-xl font-bold text-charcoal">Registration Submitted</h3>
             <p className="text-sm text-charcoal-muted mt-2 leading-relaxed">
               Welcome, <strong className="text-charcoal">{fullName}</strong>! Your request to join as 
-              <span className="font-semibold text-charcoal"> @{username}</span> has been queued.
+              <span className="font-semibold text-charcoal"> @{username.toLowerCase().trim()}</span> has been received.
             </p>
 
             <div className="mt-4 p-3 rounded-xl bg-canvas-subtle border border-border text-xs text-charcoal-muted text-left flex gap-2.5">
               <ShieldAlert className="w-4 h-4 text-sage flex-shrink-0 mt-0.5" />
               <span>
-                To protect school dance compositions, the teacher must approve your registration before you can log in.
+                To protect school dance compositions, the dance teacher must review and approve your registration before you can log in.
               </span>
             </div>
 
-            <Button
-              variant="primary"
-              size="md"
-              onClick={() => onNavigate('login')}
-              className="mt-6 w-full"
-            >
-              Return to Sign In
-            </Button>
+            <div className="mt-6 flex flex-col gap-2 w-full">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => onNavigate('login')}
+                className="w-full font-semibold"
+              >
+                Return to Sign In
+              </Button>
+            </div>
           </div>
         ) : (
           <>
@@ -101,7 +124,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
                 type="text"
                 placeholder="e.g. Ananya Rao"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  setError(null);
+                }}
                 required
               />
 
@@ -110,9 +136,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
                 type="text"
                 placeholder="e.g. ananya_dance"
                 value={username}
-                onChange={(e) => setUsername(e.target.value.toLowerCase().trim())}
+                onChange={(e) => {
+                  setUsername(e.target.value.toLowerCase().trim());
+                  setError(null);
+                }}
                 leftIcon={<User className="w-4 h-4" />}
-                helperText="Lowercase letters, numbers, and underscores"
+                helperText="3–20 lowercase letters, numbers, and underscores"
+                autoCapitalize="none"
+                autoCorrect="off"
                 required
               />
 
@@ -121,7 +152,10 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
                 type="password"
                 placeholder="At least 6 characters"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError(null);
+                }}
                 leftIcon={<Lock className="w-4 h-4" />}
                 required
               />
@@ -131,20 +165,37 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
                 type="password"
                 placeholder="Re-enter password"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  setError(null);
+                }}
                 leftIcon={<Lock className="w-4 h-4" />}
                 required
               />
 
               {error && (
-                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700">
-                  {error}
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <span className="flex-1">{error}</span>
                 </div>
               )}
 
               <div className="pt-3">
-                <Button type="submit" variant="primary" size="lg" className="w-full text-base font-semibold">
-                  Submit Registration Request
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  className="w-full text-base font-semibold"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-canvas border-t-transparent rounded-full animate-spin" />
+                      <span>Submitting Request...</span>
+                    </div>
+                  ) : (
+                    'Submit Registration Request'
+                  )}
                 </Button>
               </div>
             </form>
@@ -166,4 +217,3 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
     </div>
   );
 };
-

@@ -40,3 +40,4 @@ export const supabase: SupabaseClient = createClient(
 export function isSupabaseConfigured(): boolean {
   return isConfigured;
 }
+
