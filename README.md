@@ -1,236 +1,267 @@
-# Naatyavedam Library — Classical Dance Repertoire PWA
+# Naatyavedam Library (నాట్యవేదం లైబ్రరీ)
 
-**Naatyavedam Library** is a mobile-first Progressive Web Application (PWA) designed for an Indian classical dance (**Kuchipudi**) academy. Guru Veda (Dance Teacher) and approved dance students collaboratively maintain a shared collection of dance music for stage performances, rehearsals, and personal practice.
+> A mobile-first, offline-ready rehearsal audio player and collaborative repertoire management system engineered specifically for Indian classical dance (**Kuchipudi**) academies.
 
-The app follows an **offline-first local architecture** using Dexie.js (IndexedDB) for instant offline rehearsal playback, combined with **Supabase PostgreSQL & Supabase Storage** for collaborative cloud synchronization, role-based security, and cross-device synchronization.
-
----
-
-## 1. Technology Stack
-
-- **Frontend Core**: React 18, TypeScript 5.6, Vite 5.4.
-- **Styling & UI**: Tailwind CSS, Lucide Icons, custom Telugu classical palette (Warm Ivory `#FAF8F5`, Charcoal `#1E2328`, Muted Sage `#4A7C59`).
-- **Offline Storage**: Dexie.js 4 (IndexedDB) with raw binary `Blob` audio storage (never Base64 strings).
-- **Search**: Fuse.js client-side fuzzy search with typo tolerance and token-based highlighting.
-- **Cloud Backend**: Supabase (PostgreSQL 15, Row Level Security, Supabase Auth, Supabase Storage).
-- **PWA & Offline**: Workbox 7, Service Worker runtime caching, standalone orientation manifest, Web Share Target Level 2.
-- **Native Sharing**: Web Share API Level 2 (audio `File` objects) with automatic download fallback.
-- **Backup & Restore**: Zero-dependency pure-TypeScript PKZIP generator and parser (Store mode).
-- **Testing**: Node.js native test runner (`node:test`) with 65 automated tests across 9 suites.
+Guru Veda (Dance Teacher) and approved dance students collaboratively maintain one unified repertoire of classical dance tracks for stage shows, daily academy rehearsals, and home practice.
 
 ---
 
-## 2. Folder Structure
+## Why Naatyavedam? (The Problem It Solves)
 
+Generic music streaming platforms (Spotify, Apple Music, YouTube Music) and file drives (Google Drive, Dropbox) fail Indian classical dance teachers and students in real-world rehearsals:
+
+1. **Rehearsal Tempo Without Pitch Distortion**: Dancers learn intricate *adavus*, *jatis*, and *chollukattus* at slower speeds (`0.8x` or `0.9x`) before transitioning to full stage speed (`1.0x` or `1.15x`). Standard media players shift the audio pitch, turning the singer's voice into high-pitched distortion. Naatyavedam uses high-quality Web Audio time-stretching to adjust speed while preserving musical pitch.
+2. **Zero-Internet Green Rooms & Stages**: Classical dance performance halls, auditorium green rooms, and temple stages often have zero cellular connectivity. Naatyavedam stores raw binary audio tracks directly inside the device's **IndexedDB**, guaranteeing that every rehearsal track plays instantly offline with zero latency.
+3. **Structured by Classical Dance Margam**: Dance music cannot be organized by pop albums or artists. Naatyavedam organizes repertoire strictly by classical performance sequence:
+   * *Pushpanjali*
+   * *Jatiswaram*
+   * *Shabdam*
+   * *Varnam*
+   * *Keerthanam*
+   * *Tarangam (Brass Plate Dance)*
+   * *Thillana*
+   * *Mangalam / Slokam*
+   * *Practice Beats & Talam*
+4. **Stage Programs & Repertoire Sequencing**: Assembling an *Arangetram* or Annual Day show requires sequencing 8–10 tracks, adding stage-specific edits (e.g., a 12-minute abridged Varnam), and reordering pieces without creating duplicate audio bloat in the main library.
+5. **Eliminating WhatsApp Audio Chaos**: Gurus and students constantly share rehearsal snippets via WhatsApp, where files get lost in unorganized phone storage. Naatyavedam integrates directly with Android's system share sheet, allowing students to tap "Share" on any audio file in WhatsApp or Files and import it straight into the academy's library.
+
+---
+
+## Core Application Features
+
+### 1. Classical Dance Audio Player
+* **Pitch-Preserving Speed Changer**: Rehearse at `0.75x`, `0.85x`, `1.0x`, `1.15x`, or `1.25x` speed without changing vocal pitch.
+* **A/B Repeat Looping**: Repeat difficult rhythm sequences and *theermanams* continuously until footwork is mastered.
+* **Persistent Lock-Screen MediaSession**: Control playback (Play, Pause, Skip, Seek) from phone lock screens and Bluetooth stage sound systems.
+* **Synchronized Queue**: Floating `MiniPlayer` and full-screen `PlayerPage` dynamically follow filtered search results and custom program sequences.
+
+### 2. Unified Cloud Repertoire (Supabase + Dexie)
+* **Single Shared Collection**: When Guru Veda or Student SK uploads a track, it synchronizes across all approved academy members.
+* **Metadata Rich**: Tracks store Raagam, Taalam, Composer, Choreographer, Category, and Practice Notes.
+* **Offline-First**: Every track uploaded or downloaded is cached locally in IndexedDB. Internet is only required to synchronize changes.
+
+### 3. Collaborative Stage Programs
+* **Performance Sequencing**: Group repertoire pieces into distinct programs (e.g., *"Annual Day 2027"*, *"Kuchipudi Festival Hyderabad"*).
+* **Drag-and-Drop Reordering**: Rearrange stage track orders on the fly with touch drag-and-drop or Move Up / Move Down controls.
+* **Stage-Specific Audio Edits**: Attach custom trimmed recordings to a program item without duplicating or altering the original library master track.
+* **Program Duplication**: Clone an entire stage sequence for different batches of senior and junior students with one tap.
+
+### 4. Android PWA & Native Sharing
+* **Incoming Share (Web Share Target Level 2)**: Select an audio track in WhatsApp, Telegram, or Files by Google &rarr; tap **Share** &rarr; select **Naatyavedam Library**. The app validates the audio, guesses the Kuchipudi category, lets you edit the title, and saves it locally and to the cloud.
+* **Outgoing Native Share (Web Share API Level 2)**: Tapping Share on any track opens Android's native share sheet and attaches the **actual audio binary file** (`File` object) so you can send the music directly into WhatsApp groups. Automatic download fallback is provided on desktop browsers.
+* **Standalone Home Screen App**: Installable as a native app on Android Chrome with no browser address bars or tabs.
+
+### 5. Two-Tier Role-Based Security & Recovery Bin
+* **Guru (Teacher) Account**: Full administrative rights. Guru Veda initializes the school account securely via a server-side SQL function, approves new student registrations, generates 6-character password reset codes, and manages student access.
+* **Dance Students**: Can register with username/password, browse the entire repertoire after teacher approval, upload music, rename tracks, soft-delete tracks to the recovery bin, and manage stage programs.
+* **Shared Recovery Bin (Trash)**: To protect against accidental deletions during rehearsals, deleted songs are retained in a shared recovery bin for **30 days** showing who deleted the track and when. Any approved member can restore songs. Only the Teacher has permission to permanently purge songs.
+
+### 6. Portable Backup & Restore System
+* **Export Full Library (.zip)**: Generates a standard, portable ZIP archive containing `manifest.json`, `songs.json`, `programs.json`, and all raw audio files.
+* **Zero External Dependencies**: Built with a pure-TypeScript PKZIP generator and parser (Store mode).
+* **Safe Non-Destructive Restore**: Validates manifest signatures and imports songs without overwriting or corrupting existing local tracks.
+
+### 7. Storage Management & Activity Timeline
+* **Live Storage Dashboard**: View device IndexedDB storage usage, quota meter, downloaded songs count, pending upload count, and cloud sync status.
+* **Protected Repertoire Guarantee**: The application architecture strictly guarantees that local audio files are never automatically deleted by the app to free space.
+* **Activity Timeline**: A clean, readable chronological feed showing who uploaded, renamed, or restored songs.
+
+---
+
+## Technical Architecture & Core Logic
+
+### 1. Audio Memory & Lifecycle Management
+Browsers can easily leak memory when generating Blob URLs for large audio files. Naatyavedam handles this with a strict lifecycle:
+```typescript
+// Memory-safe URL generation with immediate cleanup
+const objectUrl = URL.createObjectURL(blob);
+audio.src = objectUrl;
+
+// Cleanup previous object URLs when changing songs or unmounting
+const cleanup = () => {
+  if (activeUrlRef.current) {
+    URL.revokeObjectURL(activeUrlRef.current);
+    activeUrlRef.current = null;
+  }
+};
 ```
-Naatyavedam_library/
-├── public/
-│   ├── icons/                     # PWA Icons (192px, 512px, maskable)
-│   ├── sw-share-target.js         # Service Worker Web Share Target POST interceptor
-│   ├── favicon.ico
-│   └── apple-touch-icon.png
-├── src/
-│   ├── components/
-│   │   ├── layout/                # AppLayout, TopHeader, BottomNav
-│   │   ├── player/                # MiniPlayer
-│   │   ├── pwa/                   # IncomingShareModal, InstallModal, InstallBanner, BackupModal
-│   │   └── ui/                    # Button, Input, Modal, Badge, Card, HighlightedText
-│   ├── data/                      # Mock dance repertoire & fallback users
-│   ├── hooks/                     # useAudioPlayer, usePwaInstall
-│   ├── lib/                       # supabase.ts (Client initialization)
-│   ├── pages/
-│   │   ├── WelcomePage.tsx        # App entry & quick demo login
-│   │   ├── LoginPage.tsx          # Username/password sign in
-│   │   ├── RegisterPage.tsx       # Student registration
-│   │   ├── PendingApprovalPage.tsx# Pending teacher review screen
-│   │   ├── LibraryPage.tsx        # Songs, categories, search, multi-select, import
-│   │   ├── PlayerPage.tsx         # Full-screen player with tempo, loop, & native share
-│   │   ├── ProgramsPage.tsx       # Collaborative stage programs & track sequences
-│   │   ├── ActivityPage.tsx       # Repertoire change timeline
-│   │   └── SettingsPage.tsx       # Profile, teacher admin, storage, trash, backup
-│   ├── services/
-│   │   ├── audioImporter.ts       # Audio validation, metadata derivation, duration
-│   │   ├── audioShare.ts          # Native Web Share API Level 2 file sharing
-│   │   ├── auth.ts                # Supabase Auth, teacher admin, password resets
-│   │   ├── backupService.ts       # Portable ZIP/JSON backup export & import
-│   │   ├── cloudLibrary.ts        # Supabase PostgreSQL & Storage sync
-│   │   ├── db.ts                  # Dexie IndexedDB schemas & operations
-│   │   ├── fuzzySearch.ts         # Fuse.js offline fuzzy search
-│   │   ├── shareTarget.ts         # IndexedDB bridge for incoming shared audio
-│   │   └── syncManager.ts         # Offline-first sync manager & conflict resolution
-│   ├── types/                     # TypeScript interfaces & domain types
-│   ├── utils/                     # Formatting, helpers, melody synthesizer
-│   ├── App.tsx                    # Root routing & state orchestration
-│   └── main.tsx                   # React root entry
-├── supabase/
-│   └── migrations/
-│       ├── 20261114_phase4_auth_and_roles.sql
-│       ├── 20261114_phase5_collaborative_programs.sql
-│       └── 20261114_phase5_shared_music_library.sql
-├── tests/                         # 65 automated tests across 9 suites
-├── docs/                          # Architecture & phase documentation
-├── package.json
-├── tailwind.config.js
-└── vite.config.ts
+
+### 2. Offline-First Synchronization Pipeline
+Every mutation follows a 6-step lifecycle:
 ```
+[User Action] 
+     ↓
+1. Save locally to IndexedDB (Instant optimistic UI)
+     ↓
+2. Enqueue in db.pendingOperations ('UPLOAD' | 'RENAME' | 'DELETE' | 'FAVORITE')
+     ↓
+3. Check network status (navigator.onLine)
+   ├── OFFLINE: Retain in queue; wait for 'online' or 'visibilitychange' event
+   └── ONLINE: Process queue with idempotency
+           ↓
+4. Upload audio binary to Supabase Storage ('music-library' bucket)
+           ↓
+5. Upsert metadata in Supabase PostgreSQL ('songs' and 'song_files')
+           ↓
+6. Mark IndexedDB record as 'synced' and remove from pending queue
+```
+
+### 3. Incoming Share Target Interceptor (`sw-share-target.js`)
+When an Android app shares audio files via multipart POST, standard web pages cannot receive the files directly without an active HTTP server. Naatyavedam solves this using Service Worker interception:
+```javascript
+// Service worker fetch listener in public/sw-share-target.js
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.method === 'POST' && url.pathname.endsWith('/share-target')) {
+    event.respondWith(async () => {
+      const formData = await event.request.formData();
+      const files = formData.getAll('audio');
+      // Save raw files into IndexedDB bridge: NaatyavedamSharedIncomingDB
+      await saveSharedIncomingFiles(files);
+      // HTTP 303 redirect brings user safely back into the PWA
+      return Response.redirect('/?incoming_share=true', 303);
+    });
+  }
+});
+```
+
+### 4. Client-Side Offline Fuzzy Search (`fuzzySearch.ts`)
+Configured using Fuse.js with weighted fields and typo tolerance:
+```typescript
+const options = {
+  keys: [
+    { name: 'title', weight: 0.5 },
+    { name: 'originalFilename', weight: 0.25 },
+    { name: 'category', weight: 0.15 },
+    { name: 'ragam', weight: 0.1 },
+  ],
+  threshold: 0.38,
+  ignoreLocation: true,
+  findAllMatches: true,
+};
+```
+
+### 5. Pure-TypeScript PKZIP Engine (`backupService.ts`)
+Rather than pulling in heavy third-party archiving dependencies, Naatyavedam implements a spec-compliant PKZIP Store-mode encoder:
+* Generates **Local File Headers** (`0x04034b50`) with CRC-32 checksums and UTF-8 flags.
+* Generates **Central Directory Headers** (`0x02014b50`) with relative offsets.
+* Generates the **End of Central Directory Record** (`0x06054b50`).
+* Produces standard `.zip` files openable natively on Windows Explorer, macOS Archive Utility, 7-Zip, and Android Files.
 
 ---
 
-## 3. Local Setup & Installation
+## Technology Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **UI Framework** | React 18 + TypeScript 5.6 | Component architecture with strict typing |
+| **Build Tool** | Vite 5.4 | Fast HMR and optimized production bundling |
+| **Styling** | Tailwind CSS | Mobile-first responsive styling and classical design tokens |
+| **Icons** | Lucide React | Clean, accessible SVG iconography |
+| **Local Database** | Dexie.js 4 (IndexedDB) | Reactive, client-side offline storage for audio Blobs and metadata |
+| **Fuzzy Search** | Fuse.js 7 | Fast offline search with typo tolerance and token weighting |
+| **Cloud Database** | Supabase PostgreSQL 15 | Relational data, Row Level Security, RPC functions |
+| **Cloud Storage** | Supabase Storage | Secure cloud storage bucket for shared audio recordings |
+| **Authentication** | Supabase Auth (GoTrue) | Username/password authentication mapped to internal secure domain |
+| **PWA & Caching** | Workbox 7 + Vite PWA | Service worker caching, offline app shell, and installability |
+| **Native APIs** | Web Share Level 2, Share Target Level 2, StorageManager | Android system share sheet, PWA share receiver, persistent storage |
+
+---
+
+## Local Development & Setup
 
 ### Prerequisites
-- Node.js 18.0+ or 20.0+
-- npm 9.0+
+* **Node.js**: v18.0+ or v20.0+
+* **npm**: v9.0+
 
-### Clone & Install
+### 1. Clone & Install
 ```bash
 git clone https://github.com/SK-Sathyavada-008/Naatyavedam_library.git
 cd Naatyavedam_library
 npm install
 ```
 
-### Run Locally
-```bash
-npm run dev
-```
-Open [http://localhost:5173](http://localhost:5173) in Google Chrome.
-
-### Run Automated Tests
-```bash
-npm test
-```
-Executes all 65 unit tests across the test suites.
-
----
-
-## 4. Environment Variables
-
-Create `.env.local` in the project root:
-
+### 2. Configure Environment Variables
+Create a `.env.local` file in the project root:
 ```env
 VITE_SUPABASE_URL=https://<your-project-ref>.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
 ```
+*(Never place your Supabase `service_role` key here. The client uses only the public publishable anon key.)*
 
-> [!IMPORTANT]
-> - Never place your Supabase `service_role` key in `.env.local` or any frontend file.
-> - Only the public publishable anon key (`VITE_SUPABASE_PUBLISHABLE_KEY`) is used on the client.
-> - `.env.local` is listed in `.gitignore` and must never be committed to Git.
+### 3. Database Migrations
+In your Supabase project dashboard, open the **SQL Editor** and run the migration scripts located in `supabase/migrations/`:
+1. `20261114_phase4_auth_and_roles.sql`: Auth, profiles, roles, student approvals, password resets, activity logs.
+2. `20261114_phase5_collaborative_programs.sql`: Collaborative dance stage programs, sequences, and items.
+3. `20261114_phase5_shared_music_library.sql`: Songs, files, storage buckets, and RLS policies.
 
----
+### 4. Initialize Teacher Account (Guru Veda)
+In your Supabase SQL Editor, run:
+```sql
+SELECT create_initial_teacher_account('veda', 'naatyavedam', 'Guru Veda');
+```
+This securely creates the teacher profile with role `TEACHER` and prevents unauthorized public teacher creation.
 
-## 5. Supabase Database & Storage Setup
-
-1. In your Supabase Dashboard, open the **SQL Editor**.
-2. Run the three migration scripts in order:
-   - [20261114_phase4_auth_and_roles.sql](file:///c:/Keerthu/Naatyavedam_library/supabase/migrations/20261114_phase4_auth_and_roles.sql)
-   - [20261114_phase5_collaborative_programs.sql](file:///c:/Keerthu/Naatyavedam_library/supabase/migrations/20261114_phase5_collaborative_programs.sql)
-   - [20261114_phase5_shared_music_library.sql](file:///c:/Keerthu/Naatyavedam_library/supabase/migrations/20261114_phase5_shared_music_library.sql)
-3. Ensure the storage bucket `music-library` exists and is marked **private** (the migration scripts set up RLS policies so authenticated approved members can upload and read audio objects).
-
----
-
-## 6. One-Time Teacher Initialization
-
-To bootstrap the school's initial administrator account without exposing credentials:
-
-1. Open Supabase Dashboard &rarr; **SQL Editor**.
-2. Run the initialization function:
-   ```sql
-   SELECT create_initial_teacher_account('veda', 'naatyavedam', 'Guru Veda');
-   ```
-3. The function creates the auth user `veda@naatyavedam.com`, assigns role `TEACHER`, sets status `APPROVED`, and locks down future teacher creation by public users.
-4. Guru Veda can then log in with:
-   - **Username**: `veda`
-   - **Password**: `naatyavedam`
+### 5. Start Development Server
+```bash
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 7. Role-Based Access Control (RBAC) & Roles
+## Automated Test Suites (65 / 65 Passing)
 
-| Capability | Dance Teacher (Guru Veda) | Approved Student (e.g. SK) | Pending Student |
-|---|---|---|---|
-| **Browse & Play Songs** | Yes | Yes | No |
-| **Offline Playback & Caching** | Yes | Yes | No |
-| **Upload Repertoire Audio** | Yes | Yes | No |
-| **Rename Songs** | Yes | Yes | No |
-| **Move Songs to Recovery Bin (Trash)** | Yes | Yes | No |
-| **Restore Songs from Recovery Bin** | Yes | Yes | No |
-| **Permanently Delete Songs** | **Yes** (Teacher Only) | **No** (Strictly Denied) | No |
-| **Create & Edit Programs** | Yes | Yes | No |
-| **Reorder Songs in Programs** | Yes | Yes | No |
-| **Approve / Reject Registrations** | **Yes** (Teacher Only) | No | No |
-| **Generate Password Reset Codes** | **Yes** (Teacher Only) | No | No |
-| **Revoke Student Access** | **Yes** (Teacher Only) | No | No |
+Run the full test suite using Node's native test runner:
+```bash
+npm test
+```
 
----
-
-## 8. Backup & Recovery System
-
-- **Export**: Generates a standard, portable `.zip` archive containing:
-  - `manifest.json`: Application metadata, version, export timestamp, track counts.
-  - `songs.json`: Metadata for all songs (titles, categories, ragam, talam, duration, notes, favorites).
-  - `programs.json`: Performance program sequences and item positions.
-  - `audio/<id>.<ext>`: Actual audio binaries.
-- **Import**: Select any previously exported `.zip` or `.json` file. The import pipeline validates the manifest signature, validates audio files, and restores songs and programs non-destructively without overwriting existing local data.
-- **Recovery Bin**: Soft-deleted songs are safely retained for 30 days. Any approved member can restore songs at any time.
+### Test Coverage Highlights:
+* **Production Readiness Checklist (16 tests)**: Simulates 1 Teacher (Veda), 2 Students (SK and Priya), 2 Android Devices, 1 Newly Installed Device, offline mode, slow network latency, interrupted uploads/downloads, duplicate uploads, rename conflicts, student access revocation, password reset verification, and native file sharing.
+* **Backup & Recovery (6 tests)**: ZIP local headers, central directory offsets, EOCD signatures, archive extraction, corrupt archive rejection, and storage calculation.
+* **Shared Cloud Library (7 tests)**: Collaborative uploads, cross-user renames, soft-deletes, restore permissions, and teacher-only permanent deletion.
+* **Offline Sync Manager (6 tests)**: Local-first persistence, offline mutation queuing, conflict handling, and non-destructive metadata sync.
+* **Collaborative Programs (4 tests)**: Program creation, drag-and-drop track reordering, duplicate program cloning, and equal permissions.
+* **Fuzzy Search (7 tests)**: Typo tolerance (*"Krshna"* &rarr; *"Krishna"*), partial matches, inverted token order, and filename searches.
+* **Authentication & Validation (8 tests)**: Username regex validation, password strength, internal domain mapping, and role-based access control.
+* **Android PWA & Sharing (6 tests)**: Web Share Target manifest configuration, Level 2 file sharing, download fallback, and standalone mode detection.
 
 ---
 
-## 9. Mobile & Android Integration
+## Deployment Guide
 
-- **Incoming Audio Sharing (Web Share Target)**:
-  - Select audio files in WhatsApp or Files by Google &rarr; Tap Share &rarr; Choose *Naatyavedam Library*.
-  - Handled by Service Worker multipart POST interceptor (`sw-share-target.js`).
-  - Audio files are stored into IndexedDB and presented in a review modal with automatically guessed Kuchipudi categories (*Jatiswaram, Shabdam, Varnam, Tarangam, Thillana*, etc.).
-- **Outgoing Audio Sharing (Web Share API Level 2)**:
-  - Tapping Share on the Player or Library song menu opens Android's native share sheet and attaches the **actual audio file binary** (`File` object) to share directly into WhatsApp or Gmail.
-  - Automatic download fallback if file sharing is unsupported by the browser.
-
----
-
-## 10. Deployment Guide
-
-### Build Production Bundle
+### Production Build
 ```bash
 npm run build
 ```
-Generates optimized assets in `dist/` with PWA service worker (`sw.js`, `sw-share-target.js`) and manifest (`manifest.webmanifest`).
+Builds the production bundle into `dist/`, including minified assets, PWA manifest (`dist/manifest.webmanifest`), and service workers (`dist/sw.js`, `dist/sw-share-target.js`).
 
 ### Deploy to Netlify / Vercel / Cloudflare Pages
-1. Connect repository `https://github.com/SK-Sathyavada-008/Naatyavedam_library.git`.
-2. **Build Command**: `npm run build`
-3. **Publish Directory**: `dist`
-4. Set Environment Variables in your hosting dashboard:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
-5. Ensure HTTPS is enabled (required for Service Workers and Web Share APIs).
+1. Connect this repository: `https://github.com/SK-Sathyavada-008/Naatyavedam_library.git`.
+2. Configure build settings:
+   * **Build Command**: `npm run build`
+   * **Publish Directory**: `dist`
+3. Add Environment Variables in the hosting dashboard:
+   * `VITE_SUPABASE_URL`
+   * `VITE_SUPABASE_PUBLISHABLE_KEY`
+4. Ensure **HTTPS** is enabled (HTTPS is strictly required for Service Workers, Web Share Target, and the Web Share API).
 
 ---
 
-## 11. Known Limitations & Platform Quirks
+## Browser Compatibility & Mobile Constraints
 
-- **iOS Safari**: iOS WebKit does not support Web Share Target Level 2 for multipart POST audio. On iPhones, users should import tracks via the standard file picker or the Backup & Restore Hub.
-- **Desktop Browsers**: Desktop Chrome/Firefox support Web Share Level 1 (text/URL) but do not support sharing binary audio file attachments via OS share sheets. The app automatically triggers a file download fallback.
-- **IndexedDB Eviction**: If a mobile phone has critically low disk space (< 1 GB free), standard browser caches may be evicted. Tapping "Protect Storage" in Settings requests persistent storage permission (`navigator.storage.persist()`) to guarantee retention.
+| Platform | Web Share Target (Incoming) | Web Share API (Outgoing Files) | PWA Installation | Offline IndexedDB |
+|---|---|---|---|---|
+| **Android Chrome (89+)** | **Full Support** | **Full Support** | **Full Support** | **Full Support** |
+| **Android Edge / Brave** | **Full Support** | **Full Support** | **Full Support** | **Full Support** |
+| **Desktop Chrome / Edge** | N/A | Fallback to Download | Full Support | Full Support |
+| **iOS Safari (15+)** | Manual Picker (WebKit limitation) | Full Support | Manual "Add to Home Screen" | Full Support |
+
+*For in-depth browser compatibility notes and mobile constraints, see [docs/browser_compatibility.md](docs/browser_compatibility.md).*
 
 ---
 
-## 12. Verification & Test Summary
+## License
 
-All 65 automated tests pass across 9 test suites:
-```
-✔ Auth: Validation & Role Permissions (8 tests)
-✔ Phase 8: Backup ZIP Builder, Parser, Validation, Storage & Recovery (6 tests)
-✔ Audio Importer & Metadata Guessing (3 tests)
-✔ Audio Synthesizer (RIFF WAV Blob) (1 test)
-✔ Offline Synchronization & Conflict Handling (6 tests)
-✔ Production Readiness Checklist: Multi-Device, Faults & RBAC (16 tests)
-✔ Programs Management & Collaborative Reordering (4 tests)
-✔ Fuzzy Search (7 tests)
-✔ Shared Cloud Library & Storage (7 tests)
-✔ Phase 7: Android Share Target, Level 2 File Share & PWA (6 tests)
-✔ Supabase Client Initialization (1 test)
-
-Total: 65 passed, 0 failed, 0 skipped
-```
+Created for Naatyavedam Kuchipudi Dance Academy. All rights reserved.

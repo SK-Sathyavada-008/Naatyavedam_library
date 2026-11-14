@@ -37,3 +37,4 @@
 ### 5. Background Synchronization
 - **Background Sync API**: Supported in Chromium on Android for retrying failed requests.
 - **Network Transition Listeners**: In environments where Periodic Background Sync is constrained by OS battery optimizations, the app registers active window `online`, `focus`, and `visibilitychange` listeners to immediately flush pending upload/edit queues the moment the dancer brings the app into view or reconnects to Wi-Fi.
+
