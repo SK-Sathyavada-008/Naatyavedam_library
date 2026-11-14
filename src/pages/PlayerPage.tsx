@@ -98,7 +98,7 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
   const effectiveDuration = duration || song.duration || 0;
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-6 max-w-md mx-auto w-full min-h-screen">
+    <div className="flex-1 flex flex-col justify-between p-4 sm:p-6 max-w-md mx-auto w-full min-h-[calc(100vh-6rem)]">
       {/* Top Bar with Down Chevron to Collapse */}
       <div className="flex items-center justify-between pt-2">
         <button

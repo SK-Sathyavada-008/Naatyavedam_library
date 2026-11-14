@@ -39,7 +39,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-canvas/95 backdrop-blur-md border-t border-border/80 pb-[env(safe-area-inset-bottom,0px)]">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 bg-canvas/95 backdrop-blur-md border-t border-border/80 pb-[env(safe-area-inset-bottom,0px)] select-none">
       <div className="max-w-md mx-auto flex items-center justify-around h-16 px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -48,12 +48,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           return (
             <button
               key={item.view}
-              onClick={() => onNavigate(item.view)}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onNavigate(item.view);
+              }}
               className={cn(
-                'relative flex flex-col items-center justify-center flex-1 h-full min-h-touch py-1 px-2 rounded-xl transition-all duration-150',
+                'relative flex flex-col items-center justify-center flex-1 h-full min-h-touch py-1 px-2 rounded-xl transition-colors touch-manipulation focus:outline-none',
                 isActive
                   ? 'text-sage font-semibold'
-                  : 'text-charcoal-muted hover:text-charcoal active:scale-95'
+                  : 'text-charcoal-muted hover:text-charcoal'
               )}
             >
               {/* Active subtle pill highlight */}

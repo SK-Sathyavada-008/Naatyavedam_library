@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppLayout } from './components/layout/AppLayout';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { WelcomePage } from './pages/WelcomePage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
@@ -64,9 +65,43 @@ import type { SyncState, DownloadBatchProgress, DanceCategory } from './types';
 
 export const App: React.FC = () => {
   // Navigation & Authentication state
-  const [currentView, setCurrentView] = useState<AppView>('welcome');
+  const getInitialView = (): AppView => {
+    try {
+      const hash = window.location.hash.replace(/^#/, '') as AppView;
+      const validViews: AppView[] = ['library', 'programs', 'player', 'settings', 'activity'];
+      if (validViews.includes(hash)) {
+        return hash;
+      }
+    } catch {}
+    return 'welcome';
+  };
+
+  const [currentView, setCurrentView] = useState<AppView>(getInitialView);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [revocationMessage, setRevocationMessage] = useState<string | null>(null);
+  const isInitializedRef = useRef<boolean>(false);
+
+  const navigateTo = useCallback((newView: AppView) => {
+    setCurrentView(newView);
+    try {
+      if (window.location.hash.replace(/^#/, '') !== newView) {
+        window.location.hash = newView;
+      }
+    } catch {}
+  }, []);
+
+  // Sync with browser history / Android back button
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#/, '') as AppView;
+      const validViews: AppView[] = ['library', 'programs', 'player', 'settings', 'activity', 'welcome', 'login', 'register'];
+      if (validViews.includes(hash)) {
+        setCurrentView(hash);
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // IndexedDB Data State
   const [songs, setSongs] = useState<Song[]>([]);
@@ -183,7 +218,7 @@ export const App: React.FC = () => {
         setUser(null);
         await setAppSetting('currentUser', null);
         setRevocationMessage(reason || 'Your account access has been revoked or your session has expired.');
-        setCurrentView('login');
+        navigateTo('login');
       } else if (backendProfile) {
         setUser((prev) => {
           if (!prev) return backendProfile;
@@ -204,16 +239,21 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Initial load from IndexedDB and persistent user session
+  // Initial load from IndexedDB and persistent user session (RUNS STRICTLY ONCE ON MOUNT)
   useEffect(() => {
+    if (isInitializedRef.current) return;
+    isInitializedRef.current = true;
+
     async function init() {
-      // 1. Ensure programs are cleared and kept empty as requested
-      await clearAllPrograms();
+      // 1. One-time initial clean-up (runs once on device, protects future user data)
+      const hasCleaned = await getAppSetting<boolean>('hasCleanedInitialData_v2', false);
+      if (!hasCleaned) {
+        await clearAllPrograms();
+        await cleanupSongsKeepOnlyAalokaye();
+        await setAppSetting('hasCleanedInitialData_v2', true);
+      }
 
-      // 2. Clear all demo/sample songs, retaining ONLY the user's actual uploaded song (Aalokaye)
-      await cleanupSongsKeepOnlyAalokaye();
-
-      // 3. Preload Aalokaye Sri Baala Krishnam if not yet present in local storage
+      // 2. Preload Aalokaye Sri Baala Krishnam if not yet present in local storage
       const existingSongs = await getLocalSongs();
       const hasAalokaye = existingSongs.some(
         (s) =>
@@ -252,24 +292,32 @@ export const App: React.FC = () => {
         }
       }
 
-      // 4. Restore saved user session if exists
+      // 3. Restore saved user session if exists
       const savedUser = await getAppSetting<UserProfile | null>('currentUser', null);
       if (savedUser) {
         setUser(savedUser);
         if (savedUser.status === 'APPROVED') {
-          setCurrentView('library');
+          // Only switch view if user is currently on an auth intro screen
+          setCurrentView((prev) => {
+            if (prev === 'welcome' || prev === 'login') {
+              const hash = window.location.hash.replace(/^#/, '') as AppView;
+              const validViews: AppView[] = ['library', 'programs', 'player', 'settings', 'activity'];
+              return validViews.includes(hash) ? hash : 'library';
+            }
+            return prev;
+          });
         }
       }
 
-      // 5. Load songs from Dexie
-      await refreshLibraryFromDB();
+      // 4. Load songs from Dexie / Supabase
+      await refreshLibraryFromDB(savedUser);
       setIsDbInitialized(true);
 
-      // 6. Verify session status with Supabase backend
+      // 5. Verify session status with Supabase backend
       await checkLiveSession(savedUser);
     }
     init();
-  }, [refreshLibraryFromDB, checkLiveSession]);
+  }, []); // Run strictly once on mount!
 
   // Online / offline listeners & auto-sync when network returns or window becomes active
   useEffect(() => {
@@ -316,7 +364,7 @@ export const App: React.FC = () => {
     setUser(profile);
     await setAppSetting('currentUser', profile);
     setRevocationMessage(null);
-    setCurrentView('library');
+    navigateTo('library');
   };
 
   const handleLoginSuccess = async (profile: UserProfile) => {
@@ -325,7 +373,7 @@ export const App: React.FC = () => {
     setRevocationMessage(null);
 
     if (profile.status === 'APPROVED') {
-      setCurrentView('library');
+      navigateTo('library');
     }
   };
 
@@ -335,7 +383,7 @@ export const App: React.FC = () => {
     await setAppSetting('currentUser', null);
     setRevocationMessage(null);
     player.pause();
-    setCurrentView('welcome');
+    navigateTo('welcome');
   };
 
   // Seed sample real playable classical audio blobs for immediate testing
@@ -787,7 +835,7 @@ export const App: React.FC = () => {
         onApproved={async (updated) => {
           setUser(updated);
           await setAppSetting('currentUser', updated);
-          setCurrentView('library');
+          navigateTo('library');
         }}
         onSignOut={handleSignOut}
       />
@@ -800,20 +848,20 @@ export const App: React.FC = () => {
       case 'welcome':
         return (
           <WelcomePage
-            onNavigate={setCurrentView}
+            onNavigate={navigateTo}
             onQuickLogin={handleQuickLogin}
           />
         );
       case 'login':
         return (
           <LoginPage
-            onNavigate={setCurrentView}
+            onNavigate={navigateTo}
             onLoginSuccess={handleLoginSuccess}
             revocationMessage={revocationMessage}
           />
         );
       case 'register':
-        return <RegisterPage onNavigate={setCurrentView} />;
+        return <RegisterPage onNavigate={navigateTo} />;
       case 'player':
         return (
           <PlayerPage
@@ -834,7 +882,7 @@ export const App: React.FC = () => {
             onSetPlaybackRate={player.setPlaybackRate}
             onSetVolume={player.setVolume}
             onToggleFavorite={handleToggleFavorite}
-            onNavigate={setCurrentView}
+            onNavigate={navigateTo}
             onClearError={player.clearError}
           />
         );
@@ -867,7 +915,7 @@ export const App: React.FC = () => {
             songs={songs}
             syncState={syncState}
             onManualSync={handleManualSync}
-            onNavigate={setCurrentView}
+            onNavigate={navigateTo}
             onLibraryRestored={() => refreshLibraryFromDB(user)}
           />
         );
@@ -877,7 +925,7 @@ export const App: React.FC = () => {
             activityLogs={activityLogs}
             librarySongs={songs}
             onPlaySong={player.playSong}
-            onNavigate={setCurrentView}
+            onNavigate={navigateTo}
             onRefreshLogs={() => refreshLibraryFromDB(user)}
           />
         );
@@ -922,7 +970,7 @@ export const App: React.FC = () => {
     <>
       <AppLayout
         currentView={currentView}
-        onNavigate={setCurrentView}
+        onNavigate={navigateTo}
         user={user}
         currentSong={player.currentSong}
         isPlaying={player.isPlaying}
@@ -930,7 +978,9 @@ export const App: React.FC = () => {
         onTogglePlay={player.togglePlay}
         isOnline={isOnline}
       >
-        {renderViewContent()}
+        <ErrorBoundary onReset={() => navigateTo('library')}>
+          {renderViewContent()}
+        </ErrorBoundary>
       </AppLayout>
 
       {/* Incoming Share Modal from Android Web Share Target */}

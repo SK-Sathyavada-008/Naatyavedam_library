@@ -48,8 +48,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         className={cn(
           'flex-1 w-full max-w-2xl mx-auto flex flex-col',
           // Give dynamic padding at bottom to clear bottom nav and mini player
-          !isAuthScreen && !isFullScreenPlayer && (currentSong ? 'pb-36 sm:pb-40' : 'pb-24 sm:pb-28'),
-          isFullScreenPlayer && 'h-screen'
+          !isAuthScreen && (currentSong && !isFullScreenPlayer ? 'pb-36 sm:pb-40' : 'pb-24 sm:pb-28')
         )}
       >
         {children}
@@ -66,8 +65,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         />
       )}
 
-      {/* Bottom Navigation (visible on main app screens) */}
-      {!isAuthScreen && !isFullScreenPlayer && (
+      {/* Bottom Navigation (visible on all main app screens) */}
+      {!isAuthScreen && (
         <BottomNav
           currentView={currentView}
           onNavigate={onNavigate}

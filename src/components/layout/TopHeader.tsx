@@ -19,8 +19,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       <div className="max-w-2xl mx-auto flex items-center justify-between">
         {/* Brand identity */}
         <button
+          type="button"
           onClick={() => onNavigate('library')}
-          className="flex items-center gap-2.5 text-left group focus:outline-none"
+          className="flex items-center gap-2.5 text-left group focus:outline-none touch-manipulation"
         >
           <div className="w-9 h-9 rounded-xl bg-sage flex items-center justify-center text-canvas shadow-subtle group-hover:bg-sage-hover transition-colors">
             <svg
@@ -65,9 +66,10 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           {/* Activity History shortcut */}
           {user && (
             <button
+              type="button"
               onClick={() => onNavigate('activity')}
               title="Repertoire Activity Timeline"
-              className="p-1.5 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle text-charcoal-muted hover:text-charcoal transition-colors flex items-center justify-center focus:outline-none"
+              className="p-1.5 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle text-charcoal-muted hover:text-charcoal transition-colors flex items-center justify-center focus:outline-none touch-manipulation"
             >
               <History className="w-4 h-4" />
             </button>
@@ -76,8 +78,9 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           {/* User role / Settings button */}
           {user ? (
             <button
+              type="button"
               onClick={() => onNavigate('settings')}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle transition-colors text-xs text-charcoal focus:outline-none"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle transition-colors text-xs text-charcoal focus:outline-none touch-manipulation"
             >
               <Badge variant={user.role === 'TEACHER' ? 'sage' : 'neutral'} size="sm">
                 {user.role === 'TEACHER' ? 'Teacher' : 'Student'}
