@@ -20,6 +20,7 @@ import {
 import { Song, AppView } from '../types';
 import { Badge } from '../components/ui/Badge';
 import { formatDuration, cn } from '../utils';
+import { shareSongAudio } from '../services/audioShare';
 
 export interface PlayerPageProps {
   song: Song | null;
@@ -319,22 +320,18 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             {volume > 0 ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-red-500" />}
           </button>
 
-          {/* Share */}
+          {/* Share actual audio file */}
           <button
-            onClick={() => {
-              if (navigator.share) {
-                navigator
-                  .share({
-                    title: song.title,
-                    text: `Kuchipudi Dance: ${song.title}`,
-                  })
-                  .catch(() => {});
-              } else {
-                alert(`Song: ${song.title}`);
+            onClick={async () => {
+              const res = await shareSongAudio(song);
+              if (res.fallbackDownloaded) {
+                alert(`Direct native file sharing is not supported by your current browser. We downloaded "${song.title}" to your device instead so you can send it via WhatsApp or Files.`);
+              } else if (!res.success && res.error && res.error !== 'Share was dismissed.') {
+                alert(res.error);
               }
             }}
             className="w-9 h-9 rounded-xl flex items-center justify-center text-charcoal-muted hover:text-charcoal hover:bg-canvas-subtle transition-colors"
-            title="Share track"
+            title="Share audio track"
           >
             <Share2 className="w-4 h-4" />
           </button>

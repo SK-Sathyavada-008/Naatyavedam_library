@@ -36,6 +36,30 @@ export default defineConfig({
         background_color: '#FAF8F5',
         display: 'standalone',
         orientation: 'portrait-primary',
+        share_target: {
+          action: '/share-target',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            files: [
+              {
+                name: 'audio',
+                accept: [
+                  'audio/*',
+                  '.mp3',
+                  '.m4a',
+                  '.wav',
+                  '.aac',
+                  '.ogg',
+                  '.opus',
+                  '.flac',
+                ],
+              },
+            ],
+          },
+        },
         icons: [
           {
             src: '/icons/icon-192x192.png',
@@ -56,6 +80,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/sw-share-target.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

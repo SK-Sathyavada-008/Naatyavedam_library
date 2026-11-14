@@ -441,3 +441,4 @@ test('Offline Sync: Never sacrifice existing local audio files during metadata s
   assert.deepEqual(device.audioBlobs.get(songId), originalAudio);
   assert.equal(device.localSongs.get(songId).title, 'Kalyani Jatiswaram - Senior Repertoire');
 });
+

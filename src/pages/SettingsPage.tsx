@@ -17,6 +17,8 @@ import {
   RefreshCw,
   Copy,
   AlertTriangle,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import {
   UserProfile,
@@ -55,6 +57,8 @@ export interface SettingsPageProps {
   onPermanentlyDeleteSong: (songId: string) => void;
   onEmptyRecoveryBin: () => void;
   onRefreshUserData?: () => void;
+  onOpenInstall?: () => void;
+  isStandalone?: boolean;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
@@ -66,6 +70,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onRestoreSong,
   onPermanentlyDeleteSong,
   onEmptyRecoveryBin,
+  onOpenInstall,
+  isStandalone = false,
 }) => {
   const isTeacher = user?.role === 'TEACHER';
 
@@ -374,6 +380,41 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </Card>
         </div>
       )}
+
+      {/* Android & PWA Setup */}
+      <Card className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-charcoal">
+            <Smartphone className="w-4 h-4 text-sage" />
+            <h4 className="text-sm font-semibold">Android &amp; PWA Setup</h4>
+          </div>
+          {isStandalone ? (
+            <Badge variant="sage" size="sm">Installed</Badge>
+          ) : (
+            <Badge variant="neutral" size="sm">Browser Tab</Badge>
+          )}
+        </div>
+
+        <p className="text-xs text-charcoal-muted leading-relaxed">
+          {isStandalone
+            ? 'Naatyavedam is running in standalone mode on your Android device with Web Share Target and native audio attachment sharing.'
+            : 'Install this application to your Android phone home screen for full-screen offline use and WhatsApp audio sharing.'}
+        </p>
+
+        {!isStandalone && onOpenInstall && (
+          <div className="pt-1">
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onOpenInstall}
+              className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Install App on Android / Home Screen</span>
+            </Button>
+          </div>
+        )}
+      </Card>
 
       {/* Offline Storage & Persistence Status */}
       <Card className="space-y-3">

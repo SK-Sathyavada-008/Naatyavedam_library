@@ -48,7 +48,16 @@ import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { generateClassicalMelodyWav } from './utils/audioGenerator';
 import { MOCK_TEACHER_USER, MOCK_STUDENT_USER } from './data/mockDanceMusic';
 import { revalidateSession, signOutUser } from './services/auth';
-import type { SyncState, DownloadBatchProgress } from './types';
+import {
+  getPendingSharedFiles,
+  clearAllSharedFiles,
+  type IncomingSharedFileRecord,
+} from './services/shareTarget';
+import { IncomingShareModal } from './components/pwa/IncomingShareModal';
+import { InstallModal } from './components/pwa/InstallModal';
+import { usePwaInstall } from './hooks/usePwaInstall';
+import { extractAudioDuration } from './services/audioImporter';
+import type { SyncState, DownloadBatchProgress, DanceCategory } from './types';
 
 export const App: React.FC = () => {
   // Navigation & Authentication state
@@ -75,6 +84,46 @@ export const App: React.FC = () => {
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
   const [downloadBatchProgress, setDownloadBatchProgress] = useState<DownloadBatchProgress | null>(null);
+
+  // Incoming PWA Share Target & Installation State
+  const [incomingSharedFiles, setIncomingSharedFiles] = useState<IncomingSharedFileRecord[]>([]);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState<boolean>(false);
+  const pwaInstall = usePwaInstall();
+
+  // Check for any incoming shared files from Android Share Target (e.g. WhatsApp, Files)
+  const checkIncomingShares = useCallback(async () => {
+    try {
+      const pending = await getPendingSharedFiles();
+      if (pending && pending.length > 0) {
+        setIncomingSharedFiles(pending);
+        if (window.location.search.includes('incoming_share')) {
+          const cleanUrl = window.location.pathname + window.location.hash;
+          window.history.replaceState({}, '', cleanUrl);
+        }
+      }
+    } catch (err) {
+      console.warn('[PWA Share Target] Error checking incoming files:', err);
+    }
+  }, []);
+
+  // Listen for app focus/visibility or initial mount to process incoming shares
+  useEffect(() => {
+    checkIncomingShares();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkIncomingShares();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', checkIncomingShares);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', checkIncomingShares);
+    };
+  }, [checkIncomingShares]);
 
   // Subscribe to sync state updates
   useEffect(() => {
@@ -360,6 +409,97 @@ export const App: React.FC = () => {
         player.playSong(result.importedSongs[0]);
       }
     }
+  };
+
+  // Confirm incoming shared audio tracks (from Android Share Target / WhatsApp)
+  const handleConfirmIncomingShare = async (
+    itemsWithMetadata: { file: Blob | File; title: string; category: DanceCategory }[]
+  ) => {
+    setImportProgress({
+      current: 0,
+      total: itemsWithMetadata.length,
+      currentFileName: 'Importing shared audio tracks...',
+    });
+
+    try {
+      for (let i = 0; i < itemsWithMetadata.length; i++) {
+        const item = itemsWithMetadata[i];
+        setImportProgress({
+          current: i + 1,
+          total: itemsWithMetadata.length,
+          currentFileName: item.title,
+        });
+
+        const duration = await extractAudioDuration(item.file).catch(() => null);
+        const songId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `shared_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+        const newSong: Song = {
+          id: songId,
+          title: item.title,
+          originalFilename: item.file instanceof File ? item.file.name : `${item.title.replace(/[^a-zA-Z0-9_-]/g, '_')}.mp3`,
+          fileType: item.file.type || 'audio/mpeg',
+          fileSize: item.file.size,
+          duration: duration || null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          isFavorite: false,
+          isLocalAvailable: true,
+          syncStatus: 'local_only',
+          ragam: 'Various',
+          talam: 'Adi (8 beats)',
+          composer: user?.fullName ? `Shared by ${user.fullName}` : 'Shared Audio',
+          category: item.category,
+          isDeleted: false,
+          uploadedBy: user?.id,
+          uploadedByName: user?.fullName || user?.username || 'member',
+        };
+
+        // 1. Save locally in IndexedDB first
+        await saveSongWithBlob(newSong, item.file);
+
+        // 2. If online and approved, upload to Supabase or queue offline operation
+        if (navigator.onLine && user && user.status === 'APPROVED') {
+          try {
+            const uploadRes = await uploadSongToCloud(newSong, item.file, user);
+            if (!uploadRes.success) {
+              await queueOfflineOperation('UPLOAD', newSong.id, {
+                title: newSong.title,
+                category: newSong.category,
+              });
+            }
+          } catch {
+            await queueOfflineOperation('UPLOAD', newSong.id, {
+              title: newSong.title,
+              category: newSong.category,
+            });
+          }
+        } else if (user && user.status === 'APPROVED') {
+          await queueOfflineOperation('UPLOAD', newSong.id, {
+            title: newSong.title,
+            category: newSong.category,
+          });
+        }
+      }
+
+      // 3. Clear temporary incoming share IndexedDB store
+      await clearAllSharedFiles();
+      setIncomingSharedFiles([]);
+
+      // 4. Refresh library state
+      await refreshLibraryFromDB(user);
+    } catch (err) {
+      console.error('Failed to import shared audio tracks:', err);
+    } finally {
+      setImportProgress(null);
+    }
+  };
+
+  const handleCancelIncomingShare = async () => {
+    await clearAllSharedFiles();
+    setIncomingSharedFiles([]);
   };
 
   // Rename song (Offline-first with cloud sync)
@@ -659,6 +799,8 @@ export const App: React.FC = () => {
             onRestoreSong={handleRestoreSong}
             onPermanentlyDeleteSong={handlePermanentlyDeleteSong}
             onEmptyRecoveryBin={handleEmptyRecoveryBin}
+            onOpenInstall={() => setIsInstallModalOpen(true)}
+            isStandalone={pwaInstall.isInstalled}
           />
         );
       case 'library':
@@ -690,23 +832,46 @@ export const App: React.FC = () => {
             syncState={syncState}
             onManualSync={handleManualSync}
             isOnline={isOnline}
+            showInstallBanner={!pwaInstall.isInstalled && !pwaInstall.isDismissed}
+            onInstallPrompt={() => setIsInstallModalOpen(true)}
+            onDismissInstallBanner={pwaInstall.dismissInstall}
           />
         );
     }
   };
 
   return (
-    <AppLayout
-      currentView={currentView}
-      onNavigate={setCurrentView}
-      user={user}
-      currentSong={player.currentSong}
-      isPlaying={player.isPlaying}
-      isLoadingAudio={player.isLoadingAudio}
-      onTogglePlay={player.togglePlay}
-      isOnline={isOnline}
-    >
-      {renderViewContent()}
-    </AppLayout>
+    <>
+      <AppLayout
+        currentView={currentView}
+        onNavigate={setCurrentView}
+        user={user}
+        currentSong={player.currentSong}
+        isPlaying={player.isPlaying}
+        isLoadingAudio={player.isLoadingAudio}
+        onTogglePlay={player.togglePlay}
+        isOnline={isOnline}
+      >
+        {renderViewContent()}
+      </AppLayout>
+
+      {/* Incoming Share Modal from Android Web Share Target */}
+      {incomingSharedFiles.length > 0 && (
+        <IncomingShareModal
+          isOpen={incomingSharedFiles.length > 0}
+          items={incomingSharedFiles}
+          onConfirmImport={handleConfirmIncomingShare}
+          onCancel={handleCancelIncomingShare}
+        />
+      )}
+
+      {/* PWA Installation Guidance Modal */}
+      <InstallModal
+        isOpen={isInstallModalOpen}
+        onClose={() => setIsInstallModalOpen(false)}
+        canInstall={pwaInstall.canInstall}
+        onPromptInstall={pwaInstall.promptInstall}
+      />
+    </>
   );
 };

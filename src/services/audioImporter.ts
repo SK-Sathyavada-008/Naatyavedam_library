@@ -48,7 +48,7 @@ export function isSupportedAudioFile(file: File): { supported: boolean; reason?:
  * Extract audio duration (in seconds) in the browser safely.
  * Creates an object URL, loads metadata, and properly revokes the URL immediately.
  */
-export async function extractAudioDuration(file: File): Promise<number | null> {
+export async function extractAudioDuration(file: File | Blob): Promise<number | null> {
   return new Promise((resolve) => {
     let objectUrl: string | null = null;
     let timer: number | null = null;

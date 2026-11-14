@@ -38,6 +38,8 @@ import { Badge } from '../components/ui/Badge';
 import { Modal } from '../components/ui/Modal';
 import { HighlightedText } from '../components/ui/HighlightedText';
 import { searchSongsFuzzy, type SearchResult } from '../services/fuzzySearch';
+import { shareSongAudio } from '../services/audioShare';
+import { InstallBanner } from '../components/pwa/InstallBanner';
 import { formatDuration, cn } from '../utils';
 
 export interface LibraryPageProps {
@@ -66,6 +68,9 @@ export interface LibraryPageProps {
   syncState?: SyncState;
   onManualSync?: () => Promise<void>;
   isOnline?: boolean;
+  showInstallBanner?: boolean;
+  onInstallPrompt?: () => void;
+  onDismissInstallBanner?: () => void;
 }
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
@@ -94,6 +99,9 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   syncState,
   onManualSync,
   isOnline = true,
+  showInstallBanner = false,
+  onInstallPrompt,
+  onDismissInstallBanner,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
@@ -281,6 +289,14 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
         className="hidden"
         id="audio-file-importer"
       />
+
+      {/* PWA Installation Prompt Banner */}
+      {showInstallBanner && onInstallPrompt && onDismissInstallBanner && (
+        <InstallBanner
+          onInstall={onInstallPrompt}
+          onDismiss={onDismissInstallBanner}
+        />
+      )}
 
       {/* Prominent Search Bar & Action Buttons */}
       <div className="space-y-3 mb-3">
@@ -932,23 +948,20 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
             </button>
 
             <button
-              onClick={() => {
-                if (navigator.share) {
-                  navigator
-                    .share({
-                      title: selectedSongForMenu.title,
-                      text: `Kuchipudi Dance: ${selectedSongForMenu.title}`,
-                    })
-                    .catch(() => {});
-                } else {
-                  alert(`Song title: ${selectedSongForMenu.title}`);
-                }
+              onClick={async () => {
+                const target = selectedSongForMenu;
                 setSelectedSongForMenu(null);
+                const res = await shareSongAudio(target);
+                if (res.fallbackDownloaded) {
+                  alert(`Direct file sharing is not supported by your current browser. We downloaded "${target.title}" to your device instead so you can send it via WhatsApp or Files.`);
+                } else if (!res.success && res.error && res.error !== 'Share was dismissed.') {
+                  alert(res.error);
+                }
               }}
               className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-canvas-subtle text-left text-sm font-medium text-charcoal transition-colors"
             >
               <Share2 className="w-4 h-4 text-charcoal-muted" />
-              <span>Share Title</span>
+              <span>Share Audio File</span>
             </button>
 
             <div className="pt-2 border-t border-border/80 mt-2">
