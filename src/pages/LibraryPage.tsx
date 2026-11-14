@@ -806,7 +806,17 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                         </span>
                       )}
 
-                      {song.isLocalAvailable && !isThisPlaying && (
+                      {/* Availability & Sync Badges */}
+                      {song.syncStatus === 'local_only' && !isThisPlaying && (
+                        <span
+                          title="Saved on this device only. Tap 'Sync Now' in Settings to upload to cloud."
+                          className="flex items-center text-[10px] text-amber-800 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full ring-1 ring-amber-200 flex-shrink-0"
+                        >
+                          Device Only
+                        </span>
+                      )}
+
+                      {song.isLocalAvailable && song.syncStatus !== 'local_only' && !isThisPlaying && (
                         <span title="Stored locally in IndexedDB (Offline ready)">
                           <CheckCircle className="w-3.5 h-3.5 text-sage flex-shrink-0" />
                         </span>

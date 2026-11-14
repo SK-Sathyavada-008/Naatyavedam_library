@@ -62,6 +62,7 @@ import { IncomingShareModal } from './components/pwa/IncomingShareModal';
 import { InstallModal } from './components/pwa/InstallModal';
 import { usePwaInstall } from './hooks/usePwaInstall';
 import { extractAudioDuration } from './services/audioImporter';
+import { generateUUID } from './utils';
 import type { SyncState, DownloadBatchProgress, DanceCategory } from './types';
 
 export const App: React.FC = () => {
@@ -268,7 +269,7 @@ export const App: React.FC = () => {
           if (res.ok) {
             const blob = await res.blob();
             const aalokayeSong: Song = {
-              id: 'song-aalokaye-krishnam',
+              id: 'a10ca7e0-0000-4000-8000-000000000001',
               title: 'Aalokaye Sri Baala Krishnam',
               originalFilename: 'Aalokaye Sri Baala Krishnam.aac',
               fileType: 'audio/aac',
@@ -441,10 +442,7 @@ export const App: React.FC = () => {
         });
 
         const duration = await extractAudioDuration(item.file).catch(() => null);
-        const songId =
-          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-            ? crypto.randomUUID()
-            : `shared_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const songId = generateUUID();
 
         const newSong: Song = {
           id: songId,

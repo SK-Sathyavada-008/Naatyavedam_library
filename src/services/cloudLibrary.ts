@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { Song, UserProfile, ActivityLogEntry, PendingOperation } from '../types';
+import { isValidUUID, generateUUID } from '../utils';
 import {
   db,
   getSongAudioBlob,
@@ -118,7 +119,28 @@ export async function uploadSongToCloud(
     return { success: false, error: msg };
   }
 
-  const storagePath = generateAudioStoragePath(song.id, song.originalFilename);
+  // Ensure song.id is a valid UUID for PostgreSQL
+  let validSongId = song.id;
+  if (!isValidUUID(validSongId)) {
+    validSongId = generateUUID();
+    const oldId = song.id;
+    song.id = validSongId;
+    // Migrate local db record
+    try {
+      await db.songs.delete(oldId);
+      await db.songs.put({ ...song, id: validSongId });
+      const b = await db.audioBlobs.get(oldId);
+      if (b) {
+        await db.audioBlobs.delete(oldId);
+        await db.audioBlobs.put({ ...b, id: validSongId, songId: validSongId });
+      }
+    } catch (migErr) {
+      console.warn('[CloudLibrary] Note: Local id migration warning:', migErr);
+    }
+  }
+
+  const uploaderId = isValidUUID(user.id) ? user.id : null;
+  const storagePath = generateAudioStoragePath(validSongId, song.originalFilename);
 
   try {
     // 3. Upload binary audio to Supabase Storage (private bucket, authenticated RLS)
@@ -136,7 +158,7 @@ export async function uploadSongToCloud(
     // 4. Save song metadata in PostgreSQL `songs` table
     const { error: songError } = await supabase.from('songs').upsert(
       {
-        id: song.id,
+        id: validSongId,
         title: song.title,
         original_filename: song.originalFilename,
         file_type: song.fileType,
@@ -149,7 +171,7 @@ export async function uploadSongToCloud(
         notes: null,
         is_favorite: song.isFavorite || false,
         is_deleted: false,
-        uploaded_by: user.id,
+        uploaded_by: uploaderId,
         uploaded_by_name: user.fullName || user.username,
         created_at: song.createdAt,
         updated_at: new Date().toISOString(),
@@ -164,14 +186,14 @@ export async function uploadSongToCloud(
     // Save song file metadata in `song_files` table
     const { error: fileError } = await supabase.from('song_files').upsert(
       {
-        song_id: song.id,
+        song_id: validSongId,
         bucket_id: STORAGE_BUCKET,
         storage_path: storagePath,
         file_name: song.originalFilename,
         mime_type: song.fileType,
         size_bytes: song.fileSize,
         duration_seconds: song.duration,
-        uploaded_by: user.id,
+        uploaded_by: uploaderId,
         created_at: song.createdAt,
         updated_at: new Date().toISOString(),
       },
@@ -183,12 +205,12 @@ export async function uploadSongToCloud(
     }
 
     // 5. Mark local record as synchronized
-    await db.songs.update(song.id, {
+    await db.songs.update(validSongId, {
       syncStatus: 'synced',
       isLocalAvailable: true,
       storagePath,
       bucketId: STORAGE_BUCKET,
-      uploadedBy: user.id,
+      uploadedBy: uploaderId || undefined,
       uploadedByName: user.fullName,
     });
 
@@ -196,19 +218,21 @@ export async function uploadSongToCloud(
     await db.pendingOperations.delete(pendingOpId);
 
     // 6. Add activity log entry to Supabase
-    await supabase.from('activity_logs').insert({
-      account_id: user.id,
-      username: user.username,
-      action_type: 'UPLOAD',
-      song_id: song.id,
-      song_title: song.title,
-      details: {
-        performed_by_name: user.fullName,
-        filename: song.originalFilename,
-        category: song.category,
-      },
-      timestamp: new Date().toISOString(),
-    });
+    if (uploaderId) {
+      await supabase.from('activity_logs').insert({
+        account_id: uploaderId,
+        username: user.username,
+        action_type: 'UPLOAD',
+        song_id: validSongId,
+        song_title: song.title,
+        details: {
+          performed_by_name: user.fullName,
+          filename: song.originalFilename,
+          category: song.category,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     return { success: true, storagePath };
   } catch (err: unknown) {
