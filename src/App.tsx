@@ -171,23 +171,33 @@ export const App: React.FC = () => {
     player.playSong(newSong);
   });
 
-  // Revalidate live session with backend
+  // Revalidate live session with backend safely without false logouts
   const checkLiveSession = useCallback(async (localUser: UserProfile | null) => {
-    if (!navigator.onLine) return; // Keep offline session if device has no network
+    if (!navigator.onLine || !localUser) return;
 
     try {
-      const backendProfile = await revalidateSession();
+      const { profile: backendProfile, isRevoked, reason } = await revalidateSession();
 
-      if (backendProfile) {
-        setUser(backendProfile);
-        await setAppSetting('currentUser', backendProfile);
-      } else if (localUser) {
-        // Session was revoked or student was removed/rejected
-        console.warn('[Auth] Session revoked or invalid. Logging out.');
+      if (isRevoked) {
+        console.warn('[Auth] Session revoked by teacher. Logging out.');
         setUser(null);
         await setAppSetting('currentUser', null);
-        setRevocationMessage('Your account access has been revoked or your session has expired.');
+        setRevocationMessage(reason || 'Your account access has been revoked or your session has expired.');
         setCurrentView('login');
+      } else if (backendProfile) {
+        setUser((prev) => {
+          if (!prev) return backendProfile;
+          if (
+            prev.id !== backendProfile.id ||
+            prev.role !== backendProfile.role ||
+            prev.status !== backendProfile.status ||
+            prev.fullName !== backendProfile.fullName
+          ) {
+            setAppSetting('currentUser', backendProfile);
+            return backendProfile;
+          }
+          return prev;
+        });
       }
     } catch (err) {
       console.error('[Auth] Error revalidating session:', err);
@@ -263,10 +273,13 @@ export const App: React.FC = () => {
 
   // Online / offline listeners & auto-sync when network returns or window becomes active
   useEffect(() => {
+    let lastSyncTime = 0;
+    const SYNC_THROTTLE_MS = 20000; // 20s throttle to avoid mobile tab tap re-render loops
+
     const handleOnline = async () => {
       setIsOnline(true);
-      checkLiveSession(user);
       if (user && user.status === 'APPROVED') {
+        await checkLiveSession(user);
         await syncAll(user);
         await refreshLibraryFromDB(user);
       }
@@ -274,24 +287,26 @@ export const App: React.FC = () => {
 
     const handleOffline = () => setIsOnline(false);
 
-    const handleVisibilityOrFocus = async () => {
-      if (user && user.status === 'APPROVED' && navigator.onLine) {
-        checkLiveSession(user);
-        await syncAll(user);
-        await refreshLibraryFromDB(user);
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && user && user.status === 'APPROVED' && navigator.onLine) {
+        const now = Date.now();
+        if (now - lastSyncTime > SYNC_THROTTLE_MS) {
+          lastSyncTime = now;
+          await checkLiveSession(user);
+          await syncAll(user);
+          await refreshLibraryFromDB(user);
+        }
       }
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('focus', handleVisibilityOrFocus);
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('focus', handleVisibilityOrFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [user, checkLiveSession, refreshLibraryFromDB]);
 

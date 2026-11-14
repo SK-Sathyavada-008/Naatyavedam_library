@@ -23,9 +23,9 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({
     setIsChecking(true);
     setStatusMessage(null);
     try {
-      const refreshed = await revalidateSession();
-      if (refreshed && refreshed.status === 'APPROVED') {
-        onApproved(refreshed);
+      const result = await revalidateSession();
+      if (result.profile && result.profile.status === 'APPROVED') {
+        onApproved(result.profile);
       } else {
         setStatusMessage('Your registration is still awaiting teacher approval. Please check with Guru Veda.');
       }

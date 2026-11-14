@@ -282,37 +282,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       </Card>
 
-      {/* Role Simulator (Testing Teacher vs Student view during development) */}
-      {onRoleSwitch && (
-        <Card className="bg-canvas-subtle/50 space-y-3">
-          <div className="flex items-center gap-2 text-charcoal">
-            <Sparkles className="w-4 h-4 text-sage" />
-            <h4 className="text-sm font-semibold">Role View Switcher</h4>
-          </div>
-          <p className="text-xs text-charcoal-muted leading-relaxed">
-            Test how the interface adapts between the Dance Teacher and approved Students.
-          </p>
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <Button
-              variant={isTeacher ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => onRoleSwitch('TEACHER')}
-              className="text-xs"
-            >
-              Dance Teacher View
-            </Button>
-            <Button
-              variant={!isTeacher ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => onRoleSwitch('STUDENT')}
-              className="text-xs"
-            >
-              Dance Student View
-            </Button>
-          </div>
-        </Card>
-      )}
-
       {/* Teacher Administration Hub (Teacher Only) */}
       {isTeacher && (
         <div className="space-y-3">
@@ -479,7 +448,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="w-full bg-border rounded-full h-2 overflow-hidden">
               <div
                 className="bg-sage h-2 rounded-full transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.max(1, storageInfo.percentageUsed))}%` }}
+                style={{ width: `${Math.min(100, Math.max(1, isNaN(storageInfo.percentageUsed) ? 1 : storageInfo.percentageUsed))}%` }}
               />
             </div>
           </div>
@@ -636,6 +605,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <span className="font-semibold text-charcoal">Dexie IndexedDB + Service Worker</span>
         </div>
       </div>
+
+      {/* Role Simulator (Testing Teacher vs Student view during development) */}
+      {onRoleSwitch && (
+        <Card className="bg-canvas-subtle/40 border-border/60 space-y-2.5 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-charcoal">
+              <Sparkles className="w-3.5 h-3.5 text-sage" />
+              <h4 className="text-xs font-semibold">Role View Switcher (Testing)</h4>
+            </div>
+            <span className="text-[10px] text-charcoal-muted font-medium">Switch Active Role</span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant={isTeacher ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => onRoleSwitch('TEACHER')}
+              className="text-xs h-8"
+            >
+              Teacher (Veda)
+            </Button>
+            <Button
+              variant={!isTeacher ? 'primary' : 'secondary'}
+              size="sm"
+              onClick={() => onRoleSwitch('STUDENT')}
+              className="text-xs h-8"
+            >
+              Student (SK)
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Sign Out Button */}
       <div className="pt-2">

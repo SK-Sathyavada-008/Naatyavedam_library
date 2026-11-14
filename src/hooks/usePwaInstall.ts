@@ -84,7 +84,7 @@ export function usePwaInstall(): UsePwaInstallReturn {
   }, []);
 
   return {
-    canInstall: Boolean(deferredPrompt) && !isInstalled && !isDismissed,
+    canInstall: Boolean(deferredPrompt) && !isInstalled,
     isInstalled,
     isDismissed,
     promptInstall,

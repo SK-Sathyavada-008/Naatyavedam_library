@@ -23,7 +23,7 @@ export const MiniPlayer: React.FC<MiniPlayerProps> = ({
   return (
     <aside
       aria-label="Audio player mini bar"
-      className="fixed bottom-16 left-0 right-0 z-35 px-3 pb-1.5 transition-all duration-200"
+      className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom,0px))] left-0 right-0 z-30 px-3 pb-1.5 transition-all duration-200 pointer-events-auto"
     >
       <div className="max-w-md mx-auto bg-canvas-card/95 backdrop-blur-md border border-border/90 rounded-2xl shadow-card px-3.5 py-2.5 flex items-center justify-between gap-3">
         {/* Clickable song info to expand */}

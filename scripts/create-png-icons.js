@@ -27,7 +27,11 @@ function makeChunk(type, data) {
   return Buffer.concat([len, typeAndData, crc]);
 }
 
-function generateIconPng(size) {
+/**
+ * Generate a PNG icon with solid full-bleed background for maskable/Apple touch
+ * or rounded appearance for standard web icons.
+ */
+function generateIconPng(size, fullBleed = true) {
   const width = size;
   const height = size;
   const rowLen = 1 + width * 4; // 1 filter byte + RGBA
@@ -35,12 +39,14 @@ function generateIconPng(size) {
 
   const cx = width / 2;
   const cy = height / 2;
-  const radius = width * 0.44;
-  const innerRadius = width * 0.28;
+  const radius = width * 0.40;
+  const innerRadius = width * 0.24;
 
-  // Background color: Sage #5E7A68 -> 94, 122, 104, 255
-  // Light color: Warm Ivory #FAF8F5 -> 250, 248, 245, 255
-  // Deep Sage: #445D4D -> 68, 93, 77, 255
+  // Colors:
+  // Sage background: #5E7A68 (94, 122, 104)
+  // Deep Sage accent: #465E50 (70, 94, 80)
+  // Ivory / Canvas: #FAF8F5 (250, 248, 245)
+  // Gold / Amber accent: #D4AF37 (212, 175, 55)
 
   for (let y = 0; y < height; y++) {
     const rowOffset = y * rowLen;
@@ -52,61 +58,67 @@ function generateIconPng(size) {
       const dy = y - cy;
       const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // Squircle background corner calculation
-      const cornerRadius = size * 0.22;
-      const qx = Math.max(0, Math.abs(x - cx) - (cx - cornerRadius));
-      const qy = Math.max(0, Math.abs(y - cy) - (cy - cornerRadius));
-      const cornerDist = Math.sqrt(qx * qx + qy * qy);
+      let r = 94, g = 122, b = 104, a = 255;
 
-      if (cornerDist > cornerRadius) {
-        // Transparent outside rounded squircle
-        rawData[pxOffset] = 0;
-        rawData[pxOffset + 1] = 0;
-        rawData[pxOffset + 2] = 0;
-        rawData[pxOffset + 3] = 0;
-      } else {
-        // Base sage background
-        let r = 94, g = 122, b = 104;
-
-        // Classical ring motif
-        if (Math.abs(dist - radius * 0.7) < size * 0.015) {
-          // Dash pattern
-          const angle = Math.atan2(dy, dx);
-          if (Math.sin(angle * 14) > 0) {
-            r = 235; g = 241; b = 237; // Ivory accent
-          }
+      if (!fullBleed) {
+        const cornerRadius = size * 0.22;
+        const qx = Math.max(0, Math.abs(x - cx) - (cx - cornerRadius));
+        const qy = Math.max(0, Math.abs(y - cy) - (cy - cornerRadius));
+        const cornerDist = Math.sqrt(qx * qx + qy * qy);
+        if (cornerDist > cornerRadius) {
+          a = 0;
         }
-
-        // Center Natya bell / flame icon
-        const bellY = cy + size * 0.05;
-        const bellDist = Math.sqrt(dx * dx + (y - bellY) * (y - bellY));
-        if (bellDist < innerRadius * 0.6) {
-          r = 250; g = 248; b = 245; // Ivory
-          if (bellDist < innerRadius * 0.2) {
-            r = 68; g = 93; b = 77; // Inner bell aperture
-          }
-        } else if (y < bellY && Math.abs(dx) < (bellY - y) * 0.4 && y > cy - innerRadius) {
-          // Flame tip upwards
-          r = 250; g = 248; b = 245;
-        }
-
-        rawData[pxOffset] = r;
-        rawData[pxOffset + 1] = g;
-        rawData[pxOffset + 2] = b;
-        rawData[pxOffset + 3] = 255;
       }
+
+      if (a > 0) {
+        // Subtle decorative outer ring (classical Natya motif within safe 80% zone)
+        if (Math.abs(dist - radius) < size * 0.018) {
+          const angle = Math.atan2(dy, dx);
+          if (Math.sin(angle * 16) > 0) {
+            r = 250; g = 248; b = 245; // Ivory beads
+          }
+        }
+
+        // Inner circle backdrop
+        if (dist < radius * 0.85) {
+          r = 78; g = 104; b = 88; // Slightly deeper sage contrast
+        }
+
+        // Natya Bell / Diya / Anjali Mudra Motif in center
+        const bellY = cy + size * 0.04;
+        const bellDist = Math.sqrt(dx * dx + (y - bellY) * (y - bellY));
+
+        if (bellDist < innerRadius * 0.65) {
+          r = 250; g = 248; b = 245; // Ivory
+          if (bellDist < innerRadius * 0.22) {
+            r = 70; g = 94; b = 80; // Inner clapper
+          }
+        } else if (y < bellY && Math.abs(dx) < (bellY - y) * 0.45 && y > cy - innerRadius) {
+          r = 250; g = 248; b = 245; // Flame / Mudra pinnacle
+        }
+
+        // Gold decorative accent at base of flame
+        if (Math.abs(y - bellY) < size * 0.02 && Math.abs(dx) < innerRadius * 0.5) {
+          r = 212; g = 175; b = 55; // Gold
+        }
+      }
+
+      rawData[pxOffset] = r;
+      rawData[pxOffset + 1] = g;
+      rawData[pxOffset + 2] = b;
+      rawData[pxOffset + 3] = a;
     }
   }
 
-  const header = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]); // PNG magic bytes
+  const header = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdrData = Buffer.alloc(13);
   ihdrData.writeUInt32BE(width, 0);
   ihdrData.writeUInt32BE(height, 4);
-  ihdrData[8] = 8; // bit depth
-  ihdrData[9] = 6; // color type: RGBA
-  ihdrData[10] = 0; // compression
-  ihdrData[11] = 0; // filter
-  ihdrData[12] = 0; // interlace
+  ihdrData[8] = 8;
+  ihdrData[9] = 6;
+  ihdrData[10] = 0;
+  ihdrData[11] = 0;
+  ihdrData[12] = 0;
 
   const ihdrChunk = makeChunk('IHDR', ihdrData);
   const compressed = zlib.deflateSync(rawData);
@@ -121,9 +133,14 @@ if (!fs.existsSync(iconsDir)) {
   fs.mkdirSync(iconsDir, { recursive: true });
 }
 
-fs.writeFileSync(path.join(iconsDir, 'icon-192x192.png'), generateIconPng(192));
-fs.writeFileSync(path.join(iconsDir, 'icon-512x512.png'), generateIconPng(512));
-fs.writeFileSync(path.resolve('public', 'apple-touch-icon.png'), generateIconPng(192));
-fs.writeFileSync(path.resolve('public', 'favicon.ico'), generateIconPng(64));
-console.log('PNG icons created successfully.');
+// 1. Full-bleed solid icons (essential for Android Maskable and Apple Touch)
+fs.writeFileSync(path.join(iconsDir, 'icon-maskable-192x192.png'), generateIconPng(192, true));
+fs.writeFileSync(path.join(iconsDir, 'icon-maskable-512x512.png'), generateIconPng(512, true));
+fs.writeFileSync(path.resolve('public', 'apple-touch-icon.png'), generateIconPng(192, true));
 
+// 2. Standard icons (full-bleed solid background prevents any Android/Chrome black corner bugs)
+fs.writeFileSync(path.join(iconsDir, 'icon-192x192.png'), generateIconPng(192, true));
+fs.writeFileSync(path.join(iconsDir, 'icon-512x512.png'), generateIconPng(512, true));
+fs.writeFileSync(path.resolve('public', 'favicon.ico'), generateIconPng(64, false));
+
+console.log('High quality PWA icons generated successfully.');

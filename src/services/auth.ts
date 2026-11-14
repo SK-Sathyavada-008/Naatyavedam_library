@@ -266,15 +266,26 @@ export async function signIn(
  * Revalidate active session on app load or screen change.
  * Prevents removed/revoked students from accessing data with an old JWT.
  */
-export async function revalidateSession(): Promise<UserProfile | null> {
-  if (!isSupabaseConfigured()) {
-    return null;
+export interface SessionRevalidationResult {
+  profile: UserProfile | null;
+  isRevoked: boolean;
+  reason?: string;
+}
+
+/**
+ * Revalidates current session against backend database.
+ * Explicitly signals if account has been revoked by teacher (REMOVED or REJECTED)
+ * versus a harmless network timeout or offline state.
+ */
+export async function revalidateSession(): Promise<SessionRevalidationResult> {
+  if (!isSupabaseConfigured() || !navigator.onLine) {
+    return { profile: null, isRevoked: false };
   }
 
   try {
     const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !sessionData?.session?.user) {
-      return null;
+      return { profile: null, isRevoked: false };
     }
 
     const userId = sessionData.session.user.id;
@@ -287,28 +298,35 @@ export async function revalidateSession(): Promise<UserProfile | null> {
       .maybeSingle();
 
     if (profileError || !profileData) {
-      return null;
+      return { profile: null, isRevoked: false };
     }
 
     // If account was removed or rejected by teacher, revoke session immediately
     if (profileData.status === 'REMOVED' || profileData.status === 'REJECTED') {
       await supabase.auth.signOut();
-      return null;
+      return {
+        profile: null,
+        isRevoked: true,
+        reason: 'Your account access has been revoked by the teacher.',
+      };
     }
 
     return {
-      id: profileData.id,
-      username: profileData.username,
-      fullName: profileData.full_name,
-      role: profileData.role,
-      status: profileData.status,
-      createdAt: profileData.created_at,
-      approvedAt: profileData.approved_at,
-      approvedBy: profileData.approved_by,
-      removedAt: profileData.removed_at,
+      profile: {
+        id: profileData.id,
+        username: profileData.username,
+        fullName: profileData.full_name,
+        role: profileData.role,
+        status: profileData.status,
+        createdAt: profileData.created_at,
+        approvedAt: profileData.approved_at,
+        approvedBy: profileData.approved_by,
+        removedAt: profileData.removed_at,
+      },
+      isRevoked: false,
     };
   } catch {
-    return null;
+    return { profile: null, isRevoked: false };
   }
 }
 

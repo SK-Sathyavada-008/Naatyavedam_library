@@ -94,7 +94,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({
             Maybe Later
           </Button>
 
-          {canInstall && (
+          {canInstall ? (
             <Button
               variant="primary"
               onClick={handleInstallClick}
@@ -102,6 +102,17 @@ export const InstallModal: React.FC<InstallModalProps> = ({
             >
               <Download className="w-4 h-4" />
               <span>Install Now</span>
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => {
+                alert("To add to home screen:\n\n• On Android Chrome: Tap the top-right 3-dots (⋮) menu and select 'Install app' or 'Add to Home screen'.\n\n• On iPhone Safari: Tap the Share button at the bottom and choose 'Add to Home Screen'.");
+              }}
+              className="flex items-center gap-1.5"
+            >
+              <Download className="w-4 h-4" />
+              <span>How to Add</span>
             </Button>
           )}
         </div>
