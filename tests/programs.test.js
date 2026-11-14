@@ -125,3 +125,4 @@ test('Programs: Both Teacher (Veda) and Approved Student (SK) have equal program
   assert.equal(canManagePrograms(pendingStudent), false);
   assert.equal(canManagePrograms(unauthenticated), false);
 });
+

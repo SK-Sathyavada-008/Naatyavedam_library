@@ -66,6 +66,13 @@ export interface Song {
   // Deletion / Recovery bin support
   isDeleted: boolean;
   deletedAt?: string;
+  deletedBy?: string;
+  restoredAt?: string;
+  restoredBy?: string;
+
+  // Cloud & Storage metadata
+  storagePath?: string;
+  bucketId?: string;
 
   // Legacy / download status compatibility
   isDownloaded?: boolean;
@@ -73,6 +80,45 @@ export interface Song {
   mimeType?: string;
   uploadedBy?: string;
   uploadedByName?: string;
+}
+
+export interface SongFileRecord {
+  id: string;
+  songId: string;
+  bucketId: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  durationSeconds: number | null;
+  md5Hash?: string;
+  uploadedBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DeviceRecord {
+  id: string;
+  userId: string;
+  deviceId: string;
+  deviceName?: string;
+  userAgent?: string;
+  ipAddress?: string;
+  isActive: boolean;
+  lastActiveAt: string;
+  createdAt: string;
+}
+
+export interface RegistrationRequestRecord {
+  id: string;
+  userId: string;
+  username: string;
+  fullName: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  notes?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
 }
 
 export interface AudioBlobRecord {

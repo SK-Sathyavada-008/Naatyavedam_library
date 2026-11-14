@@ -19,6 +19,8 @@ import {
   CheckSquare,
   Square,
   Volume2,
+  Download,
+  Cloud,
 } from 'lucide-react';
 import type { Song, UserProfile, SortOption } from '../types/index.ts';
 import { Button } from '../components/ui/Button';
@@ -48,6 +50,7 @@ export interface LibraryPageProps {
   importProgress?: { current: number; total: number; currentFileName: string } | null;
   importFailures?: { fileName: string; reason: string }[];
   onClearImportFailures?: () => void;
+  onDownloadSong?: (song: Song) => Promise<void>;
 }
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
@@ -55,6 +58,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   currentSong,
   isPlaying,
   isLoadingAudio = false,
+  user: _user,
   onPlaySong,
   onTogglePlay,
   onToggleFavorite,
@@ -68,6 +72,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   importProgress,
   importFailures = [],
   onClearImportFailures,
+  onDownloadSong,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
@@ -647,8 +652,14 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                       )}
 
                       {song.isLocalAvailable && !isThisPlaying && (
-                        <span title="Stored locally in IndexedDB">
+                        <span title="Stored locally in IndexedDB (Offline ready)">
                           <CheckCircle className="w-3.5 h-3.5 text-sage flex-shrink-0" />
+                        </span>
+                      )}
+
+                      {!song.isLocalAvailable && song.storagePath && !isThisPlaying && (
+                        <span title="Available in Shared Cloud Repertoire">
+                          <Cloud className="w-3.5 h-3.5 text-sage-hover flex-shrink-0 opacity-80" />
                         </span>
                       )}
                     </div>
@@ -773,6 +784,20 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               <Play className="w-4 h-4 text-sage" />
               <span>Play Track</span>
             </button>
+
+            {onDownloadSong && !selectedSongForMenu.isLocalAvailable && (
+              <button
+                onClick={async () => {
+                  const song = selectedSongForMenu;
+                  setSelectedSongForMenu(null);
+                  await onDownloadSong(song);
+                }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-canvas-subtle text-left text-sm font-medium text-charcoal transition-colors"
+              >
+                <Download className="w-4 h-4 text-sage" />
+                <span>Download for Offline Practice</span>
+              </button>
+            )}
 
             <button
               onClick={() => {

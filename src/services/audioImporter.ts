@@ -172,8 +172,15 @@ export async function importAudioFiles(
       // 2. Extract duration if possible
       const duration = await extractAudioDuration(file);
 
-      // 3. Construct Song metadata
-      const songId = `song_${crypto.randomUUID ? crypto.randomUUID() : Date.now() + '_' + Math.random().toString(36).slice(2, 9)}`;
+      // 3. Construct Song metadata (pure UUID for PostgreSQL & Supabase compatibility)
+      const songId =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === 'x' ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
       const now = new Date().toISOString();
       const displayTitle = deriveDisplayTitle(file.name);
       const category = guessDanceCategory(displayTitle);

@@ -19,9 +19,21 @@ import {
   bulkDeleteSongs,
   bulkFavoriteSongs,
   saveSongWithBlob,
+  getSongAudioBlob,
   getAppSetting,
   setAppSetting,
 } from './services/db';
+import {
+  uploadSongToCloud,
+  cloudRenameSong,
+  cloudSoftDeleteSong,
+  cloudRestoreSong,
+  downloadSongForOffline,
+  fetchSharedCloudLibrary,
+  fetchCloudRecoveryBin,
+  fetchSharedActivityLogs,
+  recordDeviceActivity,
+} from './services/cloudLibrary';
 import { importAudioFiles } from './services/audioImporter';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { generateClassicalMelodyWav } from './utils/audioGenerator';
@@ -52,17 +64,37 @@ export const App: React.FC = () => {
   // Connectivity
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
 
-  // Load songs & recovery bin from IndexedDB
-  const refreshLibraryFromDB = useCallback(async () => {
+  // Load songs & recovery bin from IndexedDB and sync with shared cloud collection
+  const refreshLibraryFromDB = useCallback(async (currentUser?: UserProfile | null) => {
     try {
+      const activeUser = currentUser !== undefined ? currentUser : user;
+      // 1. If online and approved user, fetch shared cloud library
+      if (navigator.onLine && activeUser && activeUser.status === 'APPROVED') {
+        const cloudActiveSongs = await fetchSharedCloudLibrary(activeUser);
+        const cloudBinSongs = await fetchCloudRecoveryBin();
+        const logs = await fetchSharedActivityLogs();
+        setSongs(cloudActiveSongs);
+        setDeletedSongs(cloudBinSongs);
+        if (logs.length > 0) {
+          setActivityLogs(logs);
+        }
+        await recordDeviceActivity(activeUser);
+        return;
+      }
+
+      // 2. Offline / local fallback
       const activeSongs = await getLocalSongs();
       const binSongs = await getRecoveryBinSongs();
       setSongs(activeSongs);
       setDeletedSongs(binSongs);
     } catch (err) {
-      console.error('Failed to load songs from IndexedDB:', err);
+      console.error('Failed to load songs from IndexedDB/Cloud:', err);
+      const activeSongs = await getLocalSongs();
+      const binSongs = await getRecoveryBinSongs();
+      setSongs(activeSongs);
+      setDeletedSongs(binSongs);
     }
-  }, []);
+  }, [user]);
 
   // Audio Player Hook (Playing REAL audio from IndexedDB, synchronized with active filtered & sorted list)
   const currentQueue = activePlaylist.length > 0 ? activePlaylist : songs;
@@ -274,20 +306,17 @@ export const App: React.FC = () => {
     }
 
     if (result.importedSongs.length > 0) {
-      await refreshLibraryFromDB();
+      // 1. Upload each imported song to Supabase Storage & PostgreSQL
+      if (user && user.status === 'APPROVED' && navigator.onLine) {
+        for (const s of result.importedSongs) {
+          const blob = await getSongAudioBlob(s.id);
+          if (blob) {
+            await uploadSongToCloud(s, blob, user);
+          }
+        }
+      }
 
-      // Log import activity
-      const newLogs: ActivityLogEntry[] = result.importedSongs.map((s) => ({
-        id: `act-${Date.now()}-${s.id}`,
-        action: 'UPLOAD',
-        songId: s.id,
-        songTitle: s.title,
-        performedBy: user?.id || 'local',
-        performedByName: user?.fullName || 'User',
-        timestamp: new Date().toISOString(),
-        details: `Imported "${s.originalFilename}" (${s.category})`,
-      }));
-      setActivityLogs((prev) => [...newLogs, ...prev]);
+      await refreshLibraryFromDB();
 
       // If nothing is playing, load first imported song
       if (!player.currentSong) {
@@ -300,28 +329,18 @@ export const App: React.FC = () => {
   const handleRenameSong = async (songId: string, newTitle: string) => {
     const target = songs.find((s) => s.id === songId);
     if (!target) return;
-    const oldTitle = target.title;
 
-    await renameSong(songId, newTitle);
+    if (user && user.status === 'APPROVED') {
+      await cloudRenameSong(songId, newTitle, user);
+    } else {
+      await renameSong(songId, newTitle);
+    }
     await refreshLibraryFromDB();
 
     // If currently playing, update player's song reference
     if (player.currentSong?.id === songId) {
       player.playSong({ ...player.currentSong, title: newTitle });
     }
-
-    // Log activity
-    const newLog: ActivityLogEntry = {
-      id: `act-${Date.now()}`,
-      action: 'RENAME',
-      songId,
-      songTitle: newTitle,
-      performedBy: user?.id || 'local',
-      performedByName: user?.fullName || 'User',
-      timestamp: new Date().toISOString(),
-      details: `Renamed from "${oldTitle}"`,
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
   };
 
   // Delete song (move to recovery bin / trash) - Allowed for both Teacher and Student
@@ -334,21 +353,12 @@ export const App: React.FC = () => {
       player.pause();
     }
 
-    await deleteLocalSong(songId, true);
+    if (user && user.status === 'APPROVED') {
+      await cloudSoftDeleteSong(songId, user);
+    } else {
+      await deleteLocalSong(songId, true);
+    }
     await refreshLibraryFromDB();
-
-    // Log activity
-    const newLog: ActivityLogEntry = {
-      id: `act-${Date.now()}`,
-      action: 'DELETE',
-      songId: target.id,
-      songTitle: target.title,
-      performedBy: user?.id || 'local',
-      performedByName: user?.fullName || 'User',
-      timestamp: new Date().toISOString(),
-      details: 'Moved to Recovery Bin',
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
   };
 
   // Restore song from recovery bin - Allowed for both Teacher and Student
@@ -356,21 +366,18 @@ export const App: React.FC = () => {
     const target = deletedSongs.find((s) => s.id === songId);
     if (!target) return;
 
-    await restoreLocalSong(songId);
+    if (user && user.status === 'APPROVED') {
+      await cloudRestoreSong(songId, user);
+    } else {
+      await restoreLocalSong(songId);
+    }
     await refreshLibraryFromDB();
+  };
 
-    // Log activity
-    const newLog: ActivityLogEntry = {
-      id: `act-${Date.now()}`,
-      action: 'RESTORE',
-      songId: target.id,
-      songTitle: target.title,
-      performedBy: user?.id || 'local',
-      performedByName: user?.fullName || 'User',
-      timestamp: new Date().toISOString(),
-      details: 'Restored from Recovery Bin',
-    };
-    setActivityLogs((prev) => [newLog, ...prev]);
+  // Download song from Supabase Storage for offline practice
+  const handleDownloadSong = async (song: Song) => {
+    await downloadSongForOffline(song, user);
+    await refreshLibraryFromDB();
   };
 
   // Permanent Delete Song - STRICTLY TEACHER ONLY
@@ -576,6 +583,7 @@ export const App: React.FC = () => {
             importProgress={importProgress}
             importFailures={importFailures}
             onClearImportFailures={() => setImportFailures([])}
+            onDownloadSong={handleDownloadSong}
           />
         );
     }

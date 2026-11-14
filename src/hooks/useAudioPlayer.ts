@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Song, PlayerState } from '../types';
 import { getSongAudioBlob } from '../services/db';
+import { getSignedAudioPlaybackUrl } from '../services/cloudLibrary';
 
 export interface UseAudioPlayerReturn extends PlayerState {
   playSong: (song: Song) => Promise<void>;
@@ -165,20 +166,25 @@ export function useAudioPlayer(
       revokeActiveUrl();
 
       try {
-        // Fetch raw audio blob from IndexedDB
+        let audioSrc: string | null = null;
+        // 1. Check local IndexedDB first for instant offline playback
         const blob = await getSongAudioBlob(song.id);
 
-        if (!blob) {
+        if (blob) {
+          audioSrc = URL.createObjectURL(blob);
+          activeObjectUrlRef.current = audioSrc;
+        } else if (song.storagePath) {
+          // 2. Fallback to Supabase Storage signed URL
+          audioSrc = await getSignedAudioPlaybackUrl(song.storagePath);
+        }
+
+        if (!audioSrc) {
           setIsLoadingAudio(false);
-          setAudioError(`Audio for "${song.title}" is missing from local storage.`);
+          setAudioError(`Audio for "${song.title}" is missing locally and from cloud storage.`);
           return;
         }
 
-        // Create fresh object URL
-        const objectUrl = URL.createObjectURL(blob);
-        activeObjectUrlRef.current = objectUrl;
-
-        audio.src = objectUrl;
+        audio.src = audioSrc;
         audio.playbackRate = playbackRate;
         audio.volume = volume;
 
