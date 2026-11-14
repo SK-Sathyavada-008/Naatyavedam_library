@@ -7,6 +7,9 @@ import type {
   PendingOperation,
   AppSettingRecord,
   SortOption,
+  Program,
+  ProgramItem,
+  ProgramAudio,
 } from '../types/index.ts';
 
 export class NaatyavedamDB extends Dexie {
@@ -16,6 +19,9 @@ export class NaatyavedamDB extends Dexie {
   downloadInfo!: Table<DownloadInfoRecord, string>;
   pendingOperations!: Table<PendingOperation, string>;
   appSettings!: Table<AppSettingRecord, string>;
+  programs!: Table<Program, string>;
+  programItems!: Table<ProgramItem, string>;
+  programAudio!: Table<ProgramAudio, string>;
 
   constructor() {
     super('NaatyavedamLibraryDB');
@@ -29,6 +35,12 @@ export class NaatyavedamDB extends Dexie {
       downloadInfo: 'id, songId, isDownloaded',
       pendingOperations: 'id, songId, type, status, createdAt',
       appSettings: 'key, updatedAt',
+    });
+
+    this.version(2).stores({
+      programs: 'id, title, eventDate, createdBy, createdAt, updatedAt, isDeleted',
+      programItems: 'id, programId, sourceType, songId, programAudioId, position, createdAt',
+      programAudio: 'id, programId, displayTitle, originalFilename, uploadedBy, createdAt',
     });
   }
 }
@@ -288,3 +300,168 @@ export async function getStorageEstimate(): Promise<{
   const songCount = await db.songs.filter((s) => !s.isDeleted).count();
   return { usage, quota, songCount };
 }
+
+/**
+ * ==============================================================================
+ * Program Management Database Services (IndexedDB)
+ * ==============================================================================
+ */
+
+/**
+ * Fetch all active programs from IndexedDB.
+ */
+export async function getLocalPrograms(): Promise<Program[]> {
+  const all = await db.programs.filter((p) => !p.isDeleted).toArray();
+  return all.sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
+
+/**
+ * Save or update a program in IndexedDB.
+ */
+export async function saveLocalProgram(program: Program): Promise<Program> {
+  const updated = {
+    ...program,
+    updatedAt: new Date().toISOString(),
+  };
+  await db.programs.put(updated);
+  return updated;
+}
+
+/**
+ * Soft delete a program in IndexedDB.
+ */
+export async function deleteLocalProgram(programId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await db.programs.update(programId, {
+    isDeleted: true,
+    deletedAt: now,
+    updatedAt: now,
+  });
+}
+
+/**
+ * Fetch ordered items for a program.
+ */
+export async function getLocalProgramItems(programId: string): Promise<ProgramItem[]> {
+  const items = await db.programItems
+    .where('programId')
+    .equals(programId)
+    .toArray();
+  return items.sort((a, b) => a.position - b.position);
+}
+
+/**
+ * Add or update an item in a program.
+ */
+export async function saveLocalProgramItem(item: ProgramItem): Promise<ProgramItem> {
+  await db.programItems.put(item);
+  await db.programs.update(item.programId, {
+    updatedAt: new Date().toISOString(),
+  });
+  return item;
+}
+
+/**
+ * Remove an item from a program without touching underlying library audio.
+ */
+export async function deleteLocalProgramItem(itemId: string, programId: string): Promise<void> {
+  await db.programItems.delete(itemId);
+  // Re-index remaining positions
+  const remaining = await getLocalProgramItems(programId);
+  await db.transaction('rw', db.programItems, async () => {
+    for (let i = 0; i < remaining.length; i++) {
+      await db.programItems.update(remaining[i].id, { position: i });
+    }
+  });
+  await db.programs.update(programId, {
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+/**
+ * Atomically reorder items in a program.
+ */
+export async function reorderLocalProgramItems(
+  programId: string,
+  orderedItemIds: string[]
+): Promise<void> {
+  await db.transaction('rw', [db.programItems, db.programs], async () => {
+    for (let i = 0; i < orderedItemIds.length; i++) {
+      await db.programItems.update(orderedItemIds[i], {
+        position: i,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    await db.programs.update(programId, {
+      updatedAt: new Date().toISOString(),
+    });
+  });
+}
+
+/**
+ * Duplicate a program and all its ordered items.
+ * Reuses references to original library songs without duplicating audio.
+ */
+export async function duplicateLocalProgram(
+  programId: string,
+  newTitle?: string,
+  createdByName = 'Member'
+): Promise<Program> {
+  const source = await db.programs.get(programId);
+  if (!source) throw new Error('Source program not found');
+
+  const newProgramId = `prog-${Date.now()}`;
+  const now = new Date().toISOString();
+
+  const clonedProgram: Program = {
+    ...source,
+    id: newProgramId,
+    title: newTitle || `${source.title} (Copy)`,
+    createdByName,
+    createdAt: now,
+    updatedAt: now,
+    isDeleted: false,
+  };
+
+  const sourceItems = await getLocalProgramItems(programId);
+
+  await db.transaction('rw', [db.programs, db.programItems], async () => {
+    await db.programs.put(clonedProgram);
+    for (const item of sourceItems) {
+      const clonedItem: ProgramItem = {
+        ...item,
+        id: `pitem-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        programId: newProgramId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await db.programItems.put(clonedItem);
+    }
+  });
+
+  return clonedProgram;
+}
+
+/**
+ * Save program-specific edited audio and its blob into IndexedDB.
+ */
+export async function saveProgramAudioBlob(
+  programAudio: ProgramAudio,
+  blob: Blob
+): Promise<void> {
+  await db.transaction('rw', [db.programAudio, db.audioBlobs], async () => {
+    await db.programAudio.put(programAudio);
+    const blobRecord: AudioBlobRecord = {
+      id: programAudio.id,
+      songId: programAudio.id,
+      blob,
+      mimeType: programAudio.fileFormat,
+      fileSize: programAudio.fileSize,
+      createdAt: programAudio.createdAt,
+    };
+    await db.audioBlobs.put(blobRecord);
+  });
+}
+

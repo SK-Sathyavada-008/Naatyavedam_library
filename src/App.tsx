@@ -532,10 +532,13 @@ export const App: React.FC = () => {
         return (
           <ProgramsPage
             user={user}
-            onPlaySong={(songId) => {
-              const target = songs.find((s) => s.id === songId);
-              if (target) player.playSong(target);
-            }}
+            librarySongs={songs}
+            currentSong={player.currentSong}
+            isPlaying={player.isPlaying}
+            isLoadingAudio={player.isLoadingAudio}
+            onPlaySong={player.playSong}
+            onTogglePlay={player.togglePlay}
+            onQueueChange={setActivePlaylist}
           />
         );
       case 'settings':
