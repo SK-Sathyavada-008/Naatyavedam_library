@@ -165,3 +165,4 @@ test('Phase 7: Web Share Target manifest configuration matches requirements', ()
   assert.ok(shareTargetConfig.params.files[0].accept.includes('.m4a'));
   assert.ok(shareTargetConfig.params.files[0].accept.includes('.wav'));
 });
+

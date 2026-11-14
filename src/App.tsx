@@ -7,6 +7,7 @@ import { LibraryPage } from './pages/LibraryPage';
 import { PlayerPage } from './pages/PlayerPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProgramsPage } from './pages/ProgramsPage';
+import { ActivityPage } from './pages/ActivityPage';
 import { PendingApprovalPage } from './pages/PendingApprovalPage';
 import { AppView, Song, UserProfile, UserRole, ActivityLogEntry } from './types';
 import {
@@ -801,6 +802,21 @@ export const App: React.FC = () => {
             onEmptyRecoveryBin={handleEmptyRecoveryBin}
             onOpenInstall={() => setIsInstallModalOpen(true)}
             isStandalone={pwaInstall.isInstalled}
+            songs={songs}
+            syncState={syncState}
+            onManualSync={handleManualSync}
+            onNavigate={setCurrentView}
+            onLibraryRestored={() => refreshLibraryFromDB(user)}
+          />
+        );
+      case 'activity':
+        return (
+          <ActivityPage
+            activityLogs={activityLogs}
+            librarySongs={songs}
+            onPlaySong={player.playSong}
+            onNavigate={setCurrentView}
+            onRefreshLogs={() => refreshLibraryFromDB(user)}
           />
         );
       case 'library':

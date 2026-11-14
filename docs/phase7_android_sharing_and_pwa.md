@@ -76,3 +76,4 @@ Phase 7 integrates mobile-first Android sharing capabilities into **Naatyavedam 
 - **Unit Tests**: `node --test tests/sharing.test.js` &rarr; **6 / 6 passing**.
 - **Full Suite**: `node --test tests/*.test.js` &rarr; **43 / 43 passing** across auth, importer, offline sync, programs, search, shared library, and sharing.
 - **Production Build**: `npm run build` &rarr; **Clean build with PWA Service Worker and manifest generation**.
+

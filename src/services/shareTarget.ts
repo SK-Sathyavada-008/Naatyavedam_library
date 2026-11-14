@@ -87,3 +87,4 @@ export async function clearAllSharedFiles(): Promise<void> {
     console.warn('[ShareTarget] Could not clear shared files:', err);
   }
 }
+

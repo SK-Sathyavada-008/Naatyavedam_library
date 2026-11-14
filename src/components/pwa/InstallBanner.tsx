@@ -59,3 +59,4 @@ export const InstallBanner: React.FC<InstallBannerProps> = ({
     </div>
   );
 };
+

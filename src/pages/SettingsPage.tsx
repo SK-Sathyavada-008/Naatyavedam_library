@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   Smartphone,
   Download,
+  FileArchive,
 } from 'lucide-react';
 import {
   UserProfile,
@@ -27,11 +28,14 @@ import {
   ActivityLogEntry,
   PasswordResetRequest,
   StorageEstimateInfo,
+  AppView,
+  SyncState,
 } from '../types';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
+import { BackupModal } from '../components/pwa/BackupModal';
 import { formatDate } from '../utils';
 import {
   getDetailedStorageEstimate,
@@ -59,6 +63,11 @@ export interface SettingsPageProps {
   onRefreshUserData?: () => void;
   onOpenInstall?: () => void;
   isStandalone?: boolean;
+  songs?: Song[];
+  syncState?: SyncState;
+  onManualSync?: () => Promise<void>;
+  onNavigate?: (view: AppView) => void;
+  onLibraryRestored?: () => void;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
@@ -72,6 +81,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onEmptyRecoveryBin,
   onOpenInstall,
   isStandalone = false,
+  songs = [],
+  syncState,
+  onManualSync,
+  onNavigate,
+  onLibraryRestored,
 }) => {
   const isTeacher = user?.role === 'TEACHER';
 
@@ -79,6 +93,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isTeacherAdminModalOpen, setIsTeacherAdminModalOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [songToPermanentlyDelete, setSongToPermanentlyDelete] = useState<Song | null>(null);
+
+  // Storage & Sync Metrics (Requirement 3)
+  const downloadedCount = songs.filter((s) => s.isLocalAvailable && !s.isDeleted).length;
+  const awaitingDownloadCount = songs.filter((s) => !s.isLocalAvailable && !s.isDeleted).length;
+  const awaitingUploadCount = syncState?.pendingCount ?? 0;
+  const syncStatus = syncState?.isSyncing
+    ? 'Syncing with cloud...'
+    : !navigator.onLine
+    ? 'Offline'
+    : syncState?.error
+    ? 'Sync Error'
+    : 'Fully Synchronized';
 
   // Offline Storage Info
   const [isStoragePersisted, setIsStoragePersisted] = useState(false);
@@ -416,25 +444,36 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         )}
       </Card>
 
-      {/* Offline Storage & Persistence Status */}
-      <Card className="space-y-3">
+      {/* Storage & Cloud Synchronization Hub (Requirement 3) */}
+      <Card className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-charcoal">
             <HardDrive className="w-4 h-4 text-sage" />
-            <h4 className="text-sm font-semibold">Offline Device Storage</h4>
+            <h4 className="text-sm font-semibold">Storage &amp; Synchronization</h4>
           </div>
-          <span className="text-xs font-semibold text-sage">IndexedDB Active</span>
+          <Badge
+            variant={
+              syncStatus === 'Syncing with cloud...'
+                ? 'sage'
+                : syncStatus === 'Offline'
+                ? 'warning'
+                : 'neutral'
+            }
+            size="sm"
+          >
+            {syncStatus}
+          </Badge>
         </div>
 
         <p className="text-xs text-charcoal-muted leading-relaxed">
-          Audio recordings and dance music are stored in your device&apos;s IndexedDB for offline rehearsals at the stage or academy.
+          Classical dance tracks are cached in your device&apos;s IndexedDB for uninterrupted rehearsals.
         </p>
 
         {/* Live Storage Meter */}
         {storageInfo && storageInfo.quotaBytes > 0 && (
           <div className="space-y-1.5 pt-1">
             <div className="flex justify-between text-xs text-charcoal-muted">
-              <span>Used: {(storageInfo.usageBytes / 1024 / 1024).toFixed(1)} MB</span>
+              <span>Storage Used: {(storageInfo.usageBytes / 1024 / 1024).toFixed(1)} MB</span>
               <span>Available: {(storageInfo.quotaBytes / 1024 / 1024 / 1024).toFixed(1)} GB</span>
             </div>
             <div className="w-full bg-border rounded-full h-2 overflow-hidden">
@@ -446,18 +485,71 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           </div>
         )}
 
-        <div className="pt-1 flex items-center justify-between">
-          <span className="text-xs text-charcoal-muted">
-            Status: {isStoragePersisted ? 'Persistent storage enabled (Protected)' : 'Standard cache (Click to protect)'}
+        {/* Repertoire Storage Metrics Grid (Requirement 3) */}
+        <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+          <div className="p-2.5 rounded-xl bg-canvas-subtle border border-border/60">
+            <span className="text-base font-bold text-charcoal block leading-none">
+              {downloadedCount}
+            </span>
+            <span className="text-[10px] sm:text-[11px] text-charcoal-muted mt-1 block">
+              Downloaded Songs
+            </span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-canvas-subtle border border-border/60">
+            <span className="text-base font-bold text-charcoal block leading-none">
+              {awaitingUploadCount}
+            </span>
+            <span className="text-[10px] sm:text-[11px] text-charcoal-muted mt-1 block">
+              Awaiting Upload
+            </span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-canvas-subtle border border-border/60">
+            <span className="text-base font-bold text-charcoal block leading-none">
+              {awaitingDownloadCount}
+            </span>
+            <span className="text-[10px] sm:text-[11px] text-charcoal-muted mt-1 block">
+              Awaiting Download
+            </span>
+          </div>
+        </div>
+
+        {/* Repertoire Protection Guarantee (Requirement 3) */}
+        <div className="p-2.5 rounded-xl bg-sage-light/40 border border-sage/30 flex items-start gap-2 text-xs text-charcoal">
+          <ShieldCheck className="w-4 h-4 text-sage flex-shrink-0 mt-0.5" />
+          <span className="text-[11px] leading-relaxed text-charcoal-muted">
+            <strong className="text-charcoal font-semibold">Protected Repertoire:</strong> Local audio files are never automatically deleted from your phone or tablet just to save space. Your rehearsals always remain offline-ready.
           </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleRequestStorage}
-            className="text-xs"
-          >
-            {isStoragePersisted ? 'Protected' : 'Protect Storage'}
-          </Button>
+        </div>
+
+        <div className="pt-1 flex items-center justify-between gap-2">
+          <span className="text-xs text-charcoal-muted">
+            {isStoragePersisted ? 'Storage status: Protected' : 'Storage status: Standard'}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {onManualSync && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onManualSync}
+                className="text-xs"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" />
+                <span>Sync Now</span>
+              </Button>
+            )}
+            {!isStoragePersisted && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleRequestStorage}
+                className="text-xs"
+              >
+                Protect Storage
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 
@@ -466,6 +558,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         <h4 className="text-xs font-semibold uppercase tracking-wider text-charcoal-muted px-1">
           Library Management
         </h4>
+
+        {/* Backup & Recovery Hub (Requirement 1) */}
+        <button
+          onClick={() => setIsBackupModalOpen(true)}
+          className="w-full p-3.5 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle flex items-center justify-between transition-colors text-left"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-lg bg-sage-light text-sage flex items-center justify-center">
+              <FileArchive className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-sm font-medium text-charcoal block">Backup &amp; Restore</span>
+              <span className="text-xs text-charcoal-muted">
+                Export portable .zip archive or restore repertoire
+              </span>
+            </div>
+          </div>
+          <span className="text-xs font-medium text-sage-hover">Open Hub</span>
+        </button>
 
         {/* Recovery Bin */}
         <button
@@ -486,9 +597,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <span className="text-xs font-medium text-sage-hover">View Bin</span>
         </button>
 
-        {/* Activity History */}
+        {/* Activity Timeline (Requirement 4) */}
         <button
-          onClick={() => setIsActivityModalOpen(true)}
+          onClick={() => {
+            if (onNavigate) {
+              onNavigate('activity');
+            } else {
+              setIsActivityModalOpen(true);
+            }
+          }}
           className="w-full p-3.5 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle flex items-center justify-between transition-colors text-left"
         >
           <div className="flex items-center gap-3">
@@ -496,11 +613,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               <History className="w-4 h-4" />
             </div>
             <div>
-              <span className="text-sm font-medium text-charcoal block">Activity History</span>
+              <span className="text-sm font-medium text-charcoal block">Activity Timeline</span>
               <span className="text-xs text-charcoal-muted">Uploads, renames and changes</span>
             </div>
           </div>
-          <span className="text-xs font-medium text-charcoal-muted">View</span>
+          <span className="text-xs font-medium text-sage-hover">View Timeline &rarr;</span>
         </button>
       </div>
 
@@ -867,42 +984,45 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               deletedSongs.map((song) => (
                 <div
                   key={song.id}
-                  className="flex items-center justify-between p-3 rounded-xl border border-border bg-canvas-card"
+                  className="p-3 rounded-xl border border-border bg-canvas-card space-y-2 text-left"
                 >
-                  <div className="min-w-0 flex-1 mr-2 text-left">
-                    <h5 className="text-sm font-semibold text-charcoal truncate">{song.title}</h5>
-                    <p className="text-xs text-charcoal-muted truncate">
-                      {song.category || 'Repertoire'} • Deleted
-                    </p>
-                  </div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h5 className="text-sm font-semibold text-charcoal truncate">{song.title}</h5>
+                      <div className="flex items-center gap-1.5 text-xs text-charcoal-muted mt-0.5">
+                        <span>Deleted by <strong className="text-charcoal font-medium">@{song.deletedBy || song.uploadedByName || 'member'}</strong></span>
+                        <span>•</span>
+                        <span>{song.deletedAt ? formatDate(song.deletedAt) : 'Recently'}</span>
+                      </div>
+                      <span className="text-[11px] text-charcoal-muted block mt-0.5">
+                        Category: {song.category || 'Repertoire'}
+                      </span>
+                    </div>
 
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <Button
-                      variant="sage-subtle"
-                      size="sm"
-                      onClick={() => onRestoreSong(song.id)}
-                      className="flex items-center gap-1 text-xs h-8 px-2.5"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      <span>Restore</span>
-                    </Button>
-
-                    {/* Permanent Delete is strictly available to Teachers only */}
-                    {isTeacher && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
                       <Button
-                        variant="secondary"
+                        variant="sage-subtle"
                         size="sm"
-                        onClick={() => {
-                          if (confirm(`Permanently delete "${song.title}" from device? This cannot be undone.`)) {
-                            onPermanentlyDeleteSong(song.id);
-                          }
-                        }}
-                        className="text-xs h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                        title="Permanently Delete Song (Teacher Only)"
+                        onClick={() => onRestoreSong(song.id)}
+                        className="flex items-center gap-1 text-xs h-8 px-2.5 font-medium"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Restore</span>
                       </Button>
-                    )}
+
+                      {/* Permanent Delete is strictly available to Teachers only */}
+                      {isTeacher && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setSongToPermanentlyDelete(song)}
+                          className="text-xs h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                          title="Permanently Purge Song (Teacher Only)"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))
@@ -989,6 +1109,70 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
         </div>
       </Modal>
+
+      {/* Explicit Permanent Deletion Confirmation Modal with Documented Retention Policy (Requirement 2) */}
+      <Modal
+        isOpen={Boolean(songToPermanentlyDelete)}
+        onClose={() => setSongToPermanentlyDelete(null)}
+        title="Permanently Purge Song?"
+        description="Irrevocable deletion from device storage and cloud database."
+      >
+        <div className="space-y-4 py-1">
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-900 space-y-1">
+            <div className="font-bold flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-red-600 flex-shrink-0" />
+              <span>Target: &ldquo;{songToPermanentlyDelete?.title}&rdquo;</span>
+            </div>
+            <p className="text-[11px] text-red-700 leading-relaxed">
+              This will permanently destroy the audio file binary and metadata record from Supabase cloud servers and all offline IndexedDB caches.
+            </p>
+          </div>
+
+          {/* Documented Retention Policy */}
+          <div className="p-3 rounded-xl bg-canvas-subtle border border-border text-xs text-charcoal space-y-1.5">
+            <div className="font-bold flex items-center gap-1 text-charcoal">
+              <ShieldCheck className="w-3.5 h-3.5 text-sage" />
+              <span>Documented Retention Policy</span>
+            </div>
+            <p className="text-[11px] text-charcoal-muted leading-relaxed">
+              Deleted repertoire tracks are safely retained in the shared Recovery Bin for <strong>30 days</strong> so rehearsals and classical dance productions are never disrupted by accidental deletes. Any approved student or teacher may restore them at any time.
+            </p>
+            <p className="text-[11px] text-charcoal-muted leading-relaxed">
+              Proceeding now bypasses the 30-day retention buffer and permanently wipes the recording.
+            </p>
+          </div>
+
+          <div className="flex gap-2 justify-end pt-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setSongToPermanentlyDelete(null)}
+            >
+              Cancel (Keep in Bin)
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => {
+                if (songToPermanentlyDelete) {
+                  onPermanentlyDeleteSong(songToPermanentlyDelete.id);
+                  setSongToPermanentlyDelete(null);
+                }
+              }}
+            >
+              Confirm Permanent Deletion
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Repertoire Backup & Restore Modal (Requirement 1) */}
+      <BackupModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        user={user}
+        onLibraryRestored={onLibraryRestored}
+      />
     </div>
   );
 };

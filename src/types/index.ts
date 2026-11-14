@@ -208,7 +208,8 @@ export type AppView =
   | 'library'
   | 'programs'
   | 'player'
-  | 'settings';
+  | 'settings'
+  | 'activity';
 
 export type SortOption = 'title-asc' | 'title-desc' | 'recent' | 'duration-desc' | 'duration-asc';
 

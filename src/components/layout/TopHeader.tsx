@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wifi, WifiOff } from 'lucide-react';
+import { Wifi, WifiOff, History } from 'lucide-react';
 import { UserProfile, AppView } from '../../types';
 import { Badge } from '../ui/Badge';
 
@@ -61,6 +61,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
             )}
             <span className="text-[11px] hidden xs:inline">{isOnline ? 'Online' : 'Offline'}</span>
           </div>
+
+          {/* Activity History shortcut */}
+          {user && (
+            <button
+              onClick={() => onNavigate('activity')}
+              title="Repertoire Activity Timeline"
+              className="p-1.5 rounded-xl border border-border bg-canvas-card hover:bg-canvas-subtle text-charcoal-muted hover:text-charcoal transition-colors flex items-center justify-center focus:outline-none"
+            >
+              <History className="w-4 h-4" />
+            </button>
+          )}
 
           {/* User role / Settings button */}
           {user ? (
