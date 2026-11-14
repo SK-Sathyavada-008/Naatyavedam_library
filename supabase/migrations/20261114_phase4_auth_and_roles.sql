@@ -203,6 +203,23 @@ AS $$
 BEGIN
   -- Mark email as confirmed automatically so username-based login works without mail server
   NEW.email_confirmed_at := COALESCE(NEW.email_confirmed_at, now());
+
+  -- Supabase GoTrue requires non-null string values for token and change fields.
+  -- NULL values cause GoTrue to crash with: "converting NULL to string is unsupported" (Database error querying schema).
+  NEW.confirmation_token := COALESCE(NEW.confirmation_token, '');
+  NEW.recovery_token := COALESCE(NEW.recovery_token, '');
+  NEW.email_change := COALESCE(NEW.email_change, '');
+  NEW.email_change_token_new := COALESCE(NEW.email_change_token_new, '');
+  NEW.email_change_token_current := COALESCE(NEW.email_change_token_current, '');
+  NEW.phone_change := COALESCE(NEW.phone_change, '');
+  NEW.phone_change_token := COALESCE(NEW.phone_change_token, '');
+  NEW.reauthentication_token := COALESCE(NEW.reauthentication_token, '');
+  NEW.aud := COALESCE(NEW.aud, 'authenticated');
+  NEW.role := COALESCE(NEW.role, 'authenticated');
+  NEW.is_super_admin := COALESCE(NEW.is_super_admin, false);
+  NEW.is_sso_user := COALESCE(NEW.is_sso_user, false);
+  NEW.is_anonymous := COALESCE(NEW.is_anonymous, false);
+
   RETURN NEW;
 END;
 $$;
@@ -303,24 +320,29 @@ DECLARE
   v_encrypted_pw TEXT;
   v_clean_username TEXT;
 BEGIN
-  -- Strict guard: Check if ANY teacher account already exists
-  SELECT count(*) INTO v_teacher_count FROM public.profiles WHERE role = 'TEACHER';
-  IF v_teacher_count > 0 THEN
-    RETURN jsonb_build_object(
-      'success', false,
-      'error', 'A Teacher account is already initialized for this school.'
-    );
-  END IF;
-
   v_clean_username := lower(trim(p_username));
-  v_user_id := gen_random_uuid();
   v_email := v_clean_username || '@naatyavedam.com';
   v_encrypted_pw := crypt(p_password, gen_salt('bf'));
 
-  -- Clean up any orphaned auth user with this email
+  -- Allow re-initializing default teacher 'veda', but prevent public from creating additional teachers
+  IF v_clean_username != 'veda' THEN
+    SELECT count(*) INTO v_teacher_count FROM public.profiles WHERE role = 'TEACHER';
+    IF v_teacher_count > 0 THEN
+      RETURN jsonb_build_object(
+        'success', false,
+        'error', 'A Teacher account is already initialized for this school.'
+      );
+    END IF;
+  END IF;
+
+  v_user_id := gen_random_uuid();
+
+  -- Clean up any existing auth user and profile for this email/username to ensure clean re-initialization
+  DELETE FROM auth.identities WHERE user_id IN (SELECT id FROM auth.users WHERE email = v_email);
+  DELETE FROM public.profiles WHERE username = v_clean_username;
   DELETE FROM auth.users WHERE email = v_email;
 
-  -- Insert into auth.users with pre-confirmed email
+  -- Insert into auth.users with pre-confirmed email and safe empty string tokens
   INSERT INTO auth.users (
     id,
     instance_id,
@@ -332,7 +354,18 @@ BEGIN
     raw_app_meta_data,
     raw_user_meta_data,
     created_at,
-    updated_at
+    updated_at,
+    confirmation_token,
+    recovery_token,
+    email_change,
+    email_change_token_new,
+    email_change_token_current,
+    phone_change,
+    phone_change_token,
+    reauthentication_token,
+    is_super_admin,
+    is_sso_user,
+    is_anonymous
   ) VALUES (
     v_user_id,
     '00000000-0000-0000-0000-000000000000',
@@ -344,10 +377,21 @@ BEGIN
     jsonb_build_object('provider', 'email', 'providers', array['email']),
     jsonb_build_object('username', v_clean_username, 'full_name', p_full_name, 'is_first_teacher', true),
     now(),
-    now()
+    now(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    false,
+    false,
+    false
   );
 
-  -- Insert identity
+  -- Insert identity with provider_id matching user UUID text (required by Supabase GoTrue)
   INSERT INTO auth.identities (
     id,
     user_id,
@@ -358,11 +402,11 @@ BEGIN
     created_at,
     updated_at
   ) VALUES (
-    gen_random_uuid(),
     v_user_id,
-    jsonb_build_object('sub', v_user_id::text, 'email', v_email),
+    v_user_id,
+    format('{"sub":"%s","email":"%s"}', v_user_id::text, v_email)::jsonb,
     'email',
-    v_email,
+    v_user_id::text,
     now(),
     now(),
     now()
@@ -391,6 +435,7 @@ BEGIN
   ON CONFLICT (id) DO UPDATE SET
     role = 'TEACHER',
     status = 'APPROVED',
+    full_name = p_full_name,
     approved_at = now();
 
   -- Audit log
@@ -787,28 +832,18 @@ DECLARE
   v_email TEXT;
   v_encrypted_pw TEXT;
   v_clean_username TEXT;
-  v_existing_id UUID;
 BEGIN
   v_clean_username := lower(trim(p_username));
   v_email := v_clean_username || '@naatyavedam.com';
-
-  -- Check if already exists in profiles
-  SELECT id INTO v_existing_id FROM public.profiles WHERE username = v_clean_username;
-  IF v_existing_id IS NOT NULL THEN
-    RETURN jsonb_build_object(
-      'success', true,
-      'message', 'Student account already exists.',
-      'username', v_clean_username
-    );
-  END IF;
-
-  v_user_id := gen_random_uuid();
   v_encrypted_pw := crypt(p_password, gen_salt('bf'));
+  v_user_id := gen_random_uuid();
 
-  -- Clean up any orphaned auth user with this email
+  -- Clean up existing student record to ensure clean re-initialization
+  DELETE FROM auth.identities WHERE user_id IN (SELECT id FROM auth.users WHERE email = v_email);
+  DELETE FROM public.profiles WHERE username = v_clean_username;
   DELETE FROM auth.users WHERE email = v_email;
 
-  -- Insert into auth.users with pre-confirmed email
+  -- Insert into auth.users with pre-confirmed email and safe empty string tokens
   INSERT INTO auth.users (
     id,
     instance_id,
@@ -820,7 +855,18 @@ BEGIN
     raw_app_meta_data,
     raw_user_meta_data,
     created_at,
-    updated_at
+    updated_at,
+    confirmation_token,
+    recovery_token,
+    email_change,
+    email_change_token_new,
+    email_change_token_current,
+    phone_change,
+    phone_change_token,
+    reauthentication_token,
+    is_super_admin,
+    is_sso_user,
+    is_anonymous
   ) VALUES (
     v_user_id,
     '00000000-0000-0000-0000-000000000000',
@@ -832,10 +878,21 @@ BEGIN
     jsonb_build_object('provider', 'email', 'providers', array['email']),
     jsonb_build_object('username', v_clean_username, 'full_name', p_full_name),
     now(),
-    now()
+    now(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    false,
+    false,
+    false
   );
 
-  -- Insert identity
+  -- Insert identity with provider_id matching user UUID text (required by Supabase GoTrue)
   INSERT INTO auth.identities (
     id,
     user_id,
@@ -846,11 +903,11 @@ BEGIN
     created_at,
     updated_at
   ) VALUES (
-    gen_random_uuid(),
     v_user_id,
-    jsonb_build_object('sub', v_user_id::text, 'email', v_email),
+    v_user_id,
+    format('{"sub":"%s","email":"%s"}', v_user_id::text, v_email)::jsonb,
     'email',
-    v_email,
+    v_user_id::text,
     now(),
     now(),
     now()
@@ -904,7 +961,39 @@ END;
 $$;
 
 -- ==============================================================================
--- 10. INITIALIZE DEFAULT TEACHER AND STUDENT ACCOUNTS
+-- 10. REPAIR EXISTING TOKENS & GRANT SCHEMA PERMISSIONS
+-- ==============================================================================
+
+-- Fix any NULL token columns in auth.users that cause GoTrue schema query errors
+UPDATE auth.users
+SET 
+  confirmation_token = COALESCE(confirmation_token, ''),
+  recovery_token = COALESCE(recovery_token, ''),
+  email_change = COALESCE(email_change, ''),
+  email_change_token_new = COALESCE(email_change_token_new, ''),
+  email_change_token_current = COALESCE(email_change_token_current, ''),
+  phone_change = COALESCE(phone_change, ''),
+  phone_change_token = COALESCE(phone_change_token, ''),
+  reauthentication_token = COALESCE(reauthentication_token, '')
+WHERE 
+  confirmation_token IS NULL
+  OR recovery_token IS NULL
+  OR email_change IS NULL
+  OR email_change_token_new IS NULL;
+
+-- Fix identities where provider_id was set to email instead of user UUID
+UPDATE auth.identities
+SET provider_id = user_id::text
+WHERE provider = 'email' AND provider_id != user_id::text;
+
+-- Grant API permissions
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- ==============================================================================
+-- 11. INITIALIZE DEFAULT TEACHER AND STUDENT ACCOUNTS
 -- ==============================================================================
 
 -- Teacher: Guru Veda (username: veda, password: naatyavedam)
@@ -920,4 +1009,3 @@ SELECT public.create_initial_student_account(
   'naatyavedam',
   'SK'
 );
-
