@@ -42,6 +42,8 @@ Guru (Dance Teacher and approved dance students collaboratively maintain one uni
 ### 7. Storage Management & Activity Timeline
 * **Live Storage Dashboard**: View device IndexedDB storage usage, quota meter, downloaded songs count, pending upload count, and cloud sync status.
 * **Protected Repertoire Guarantee**: The application architecture strictly guarantees that local audio files are never automatically deleted by the app to free space.
+* **Selective Offline Cache Control (Free Up Space)**: Users can remove downloaded audio from their device's IndexedDB at any time without deleting the song from the database or the app. Songs remain intact in the school library, programs, and Supabase Storage, and can be streamed online or re-downloaded anytime.
+* **Multi-Tier Storage Controls**: Free up device space for individual songs (from the song menu or Player screen), multi-selected songs in the library, or with one-tap "Clear All Offline Downloads" in Settings.
 * **Activity Timeline**: A clean, readable chronological feed showing who uploaded, renamed, or restored songs.
 
 ---
@@ -181,7 +183,7 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## Automated Test Suites (65 / 65 Passing)
+## Automated Test Suites (68 / 68 Passing)
 
 Run the full test suite using Node's native test runner:
 ```bash
@@ -190,7 +192,7 @@ npm test
 
 ### Test Coverage Highlights:
 * **Production Readiness Checklist (16 tests)**: Simulates 1 Teacher, 2 Students, 2 Android Devices, 1 Newly Installed Device, offline mode, slow network latency, interrupted uploads/downloads, duplicate uploads, rename conflicts, student access revocation, password reset verification, and native file sharing.
-* **Backup & Recovery (6 tests)**: ZIP local headers, central directory offsets, EOCD signatures, archive extraction, corrupt archive rejection, and storage calculation.
+* **Backup, Recovery & Storage Management (9 tests)**: ZIP local headers, central directory offsets, EOCD signatures, archive extraction, corrupt archive rejection, storage calculation, selective offline cache removal, cloud-backup verification, and bulk device storage cleanup.
 * **Shared Cloud Library (7 tests)**: Collaborative uploads, cross-user renames, soft-deletes, restore permissions, and teacher-only permanent deletion.
 * **Offline Sync Manager (6 tests)**: Local-first persistence, offline mutation queuing, conflict handling, and non-destructive metadata sync.
 * **Collaborative Programs (4 tests)**: Program creation, drag-and-drop track reordering, duplicate program cloning, and equal permissions.

@@ -341,6 +341,100 @@ export async function getDetailedStorageEstimate(): Promise<StorageEstimateInfo>
 }
 
 /**
+ * Fetch all songs that currently have their audio binary downloaded in IndexedDB.
+ */
+export async function getDownloadedSongs(): Promise<Song[]> {
+  const songs = await db.songs.filter((s) => !s.isDeleted && Boolean(s.isLocalAvailable)).toArray();
+  return songs.sort((a, b) => (b.fileSize || 0) - (a.fileSize || 0));
+}
+
+/**
+ * Safely removes a song's cached audio blob from device IndexedDB to free up storage.
+ * The song metadata and its cloud backup in Supabase Storage remain 100% untouched.
+ * Does NOT delete the song from the database, programs, or the app.
+ */
+export async function removeLocalSongAudio(songId: string): Promise<{ success: boolean; error?: string }> {
+  const song = await db.songs.get(songId);
+  if (!song) {
+    return { success: false, error: 'Song not found in library.' };
+  }
+
+  // Safety check: Cannot remove audio if it has never been synced to cloud
+  if (!song.storagePath && song.syncStatus !== 'synced') {
+    return {
+      success: false,
+      error: 'Cannot remove from device storage: this audio file has not synced to the cloud yet. Please sync to the cloud first so you do not lose the audio.',
+    };
+  }
+
+  await db.transaction('rw', [db.songs, db.audioBlobs, db.downloadInfo], async () => {
+    // 1. Delete local audio blob to free up device space
+    await db.audioBlobs.delete(songId);
+
+    // 2. Mark song as not available locally, but keep in library
+    await db.songs.update(songId, {
+      isLocalAvailable: false,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // 3. Update downloadInfo status
+    const existingDl = await db.downloadInfo.get(songId);
+    if (existingDl) {
+      await db.downloadInfo.put({
+        ...existingDl,
+        status: 'not_downloaded',
+        progress: 0,
+        isDownloaded: false,
+      });
+    }
+  });
+
+  return { success: true };
+}
+
+/**
+ * Bulk remove downloaded audio blobs from local IndexedDB for selected songs.
+ * Only removes audio for tracks safely stored in the cloud.
+ */
+export async function bulkRemoveLocalSongAudio(songIds: string[]): Promise<{ count: number; skipped: number }> {
+  let count = 0;
+  let skipped = 0;
+
+  for (const id of songIds) {
+    const res = await removeLocalSongAudio(id);
+    if (res.success) {
+      count++;
+    } else {
+      skipped++;
+    }
+  }
+
+  return { count, skipped };
+}
+
+/**
+ * Remove ALL cached audio blobs from device IndexedDB to free up maximum device storage.
+ * Preserves all songs in library metadata, programs, and cloud storage.
+ * Skips any tracks that are not yet backed up in the cloud.
+ */
+export async function clearAllLocalAudioCache(): Promise<{ count: number; skipped: number }> {
+  const allSongs = await db.songs.filter((s) => !s.isDeleted && Boolean(s.isLocalAvailable)).toArray();
+  let count = 0;
+  let skipped = 0;
+
+  for (const s of allSongs) {
+    const res = await removeLocalSongAudio(s.id);
+    if (res.success) {
+      count++;
+    } else {
+      skipped++;
+    }
+  }
+
+  return { count, skipped };
+}
+
+/**
  * Request persistent browser storage so IndexedDB is not evicted under pressure.
  */
 export async function requestPersistentStorage(): Promise<boolean> {

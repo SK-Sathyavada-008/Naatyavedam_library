@@ -26,6 +26,9 @@ import {
   setAppSetting,
   clearAllPrograms,
   cleanupSongsKeepOnlyAalokaye,
+  removeLocalSongAudio,
+  bulkRemoveLocalSongAudio,
+  clearAllLocalAudioCache,
 } from './services/db';
 import {
   uploadSongToCloud,
@@ -608,6 +611,38 @@ export const App: React.FC = () => {
     }
   };
 
+  // Remove downloaded audio from device storage (Free up offline space without deleting from DB or app)
+  const handleRemoveOfflineDownload = async (songId: string) => {
+    const target = songs.find((s) => s.id === songId);
+    if (!target) return;
+
+    const res = await removeLocalSongAudio(songId);
+    if (!res.success) {
+      alert(res.error || 'Failed to remove offline download.');
+      return;
+    }
+
+    if (player.currentSong?.id === songId) {
+      player.playSong({ ...player.currentSong, isLocalAvailable: false });
+    }
+
+    await refreshLibraryFromDB(user);
+  };
+
+  // Bulk remove offline downloads
+  const handleBulkRemoveOffline = async (songIds: string[]) => {
+    const res = await bulkRemoveLocalSongAudio(songIds);
+    await refreshLibraryFromDB(user);
+    return res;
+  };
+
+  // Clear all offline audio cache
+  const handleClearAllOfflineCache = async () => {
+    const res = await clearAllLocalAudioCache();
+    await refreshLibraryFromDB(user);
+    return res;
+  };
+
   // Permanent Delete Song - STRICTLY TEACHER ONLY
   const handlePermanentlyDeleteSong = async (songId: string) => {
     if (user?.role !== 'TEACHER') {
@@ -764,6 +799,8 @@ export const App: React.FC = () => {
             onToggleFavorite={handleToggleFavorite}
             onNavigate={navigateTo}
             onClearError={player.clearError}
+            onDownloadSong={handleDownloadSong}
+            onRemoveOfflineDownload={handleRemoveOfflineDownload}
           />
         );
       case 'programs':
@@ -796,6 +833,8 @@ export const App: React.FC = () => {
             onManualSync={handleManualSync}
             onNavigate={navigateTo}
             onLibraryRestored={() => refreshLibraryFromDB(user)}
+            onRemoveOfflineDownload={handleRemoveOfflineDownload}
+            onClearAllOfflineDownloads={handleClearAllOfflineCache}
           />
         );
       case 'activity':
@@ -839,6 +878,8 @@ export const App: React.FC = () => {
             showInstallBanner={!pwaInstall.isInstalled && !pwaInstall.isDismissed}
             onInstallPrompt={() => setIsInstallModalOpen(true)}
             onDismissInstallBanner={pwaInstall.dismissInstall}
+            onRemoveOfflineDownload={handleRemoveOfflineDownload}
+            onBulkRemoveOffline={handleBulkRemoveOffline}
           />
         );
     }

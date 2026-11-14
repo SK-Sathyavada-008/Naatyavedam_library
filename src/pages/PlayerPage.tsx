@@ -16,6 +16,8 @@ import {
   AlertCircle,
   Volume2,
   VolumeX,
+  Cloud,
+  Download,
 } from 'lucide-react';
 import { Song, AppView } from '../types';
 import { Badge } from '../components/ui/Badge';
@@ -42,6 +44,8 @@ export interface PlayerPageProps {
   onToggleFavorite: (songId: string) => void;
   onNavigate: (view: AppView) => void;
   onClearError?: () => void;
+  onDownloadSong?: (song: Song) => Promise<void>;
+  onRemoveOfflineDownload?: (songId: string) => Promise<void>;
 }
 
 export const PlayerPage: React.FC<PlayerPageProps> = ({
@@ -64,6 +68,8 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
   onToggleFavorite,
   onNavigate,
   onClearError,
+  onDownloadSong,
+  onRemoveOfflineDownload,
 }) => {
   if (!song) {
     return (
@@ -195,11 +201,43 @@ export const PlayerPage: React.FC<PlayerPageProps> = ({
             {song.originalFilename}
           </p>
 
-          {/* Offline check badge */}
-          {song.isLocalAvailable && (
-            <div className="flex items-center justify-center gap-1.5 mt-2 text-xs text-sage font-medium">
-              <CheckCircle className="w-3.5 h-3.5" />
-              <span>Available Offline in IndexedDB</span>
+          {/* Offline / Cloud Status & Storage Management */}
+          {song.isLocalAvailable ? (
+            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs text-sage font-medium bg-sage-light/50 px-2.5 py-0.5 rounded-full border border-sage/30">
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>Available Offline</span>
+              </span>
+              {onRemoveOfflineDownload && song.storagePath && (
+                <button
+                  onClick={() => {
+                    if (confirm(`Remove downloaded audio for "${song.title}" from this device to free up storage?\n\n• The song remains in your library and cloud.\n• You can stream it online or re-download anytime.`)) {
+                      onRemoveOfflineDownload(song.id);
+                    }
+                  }}
+                  className="text-[11px] text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-2 py-0.5 rounded-full transition-colors font-medium"
+                  title="Free device storage by removing offline file"
+                >
+                  Free Device Space
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+              <span className="flex items-center gap-1.5 text-xs text-charcoal-muted font-medium bg-canvas-subtle px-2.5 py-0.5 rounded-full border border-border">
+                <Cloud className="w-3.5 h-3.5 text-sage-hover" />
+                <span>Streaming Online</span>
+              </span>
+              {onDownloadSong && song.storagePath && (
+                <button
+                  onClick={() => onDownloadSong(song)}
+                  className="flex items-center gap-1 text-[11px] text-sage hover:text-sage-hover bg-sage-light/60 hover:bg-sage-light border border-sage-border px-2 py-0.5 rounded-full transition-colors font-semibold"
+                  title="Download to IndexedDB for offline rehearsals"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>Download Track</span>
+                </button>
+              )}
             </div>
           )}
         </div>

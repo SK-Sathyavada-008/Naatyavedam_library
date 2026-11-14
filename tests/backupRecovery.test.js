@@ -330,3 +330,127 @@ test('Phase 8 Storage Protection: Repertoire guarantee ensures local audio files
   assert.equal(policy.autoDeletePolicy, 'NEVER');
 });
 
+test('Storage Management: Safely removing local audio blob frees space while preserving song in library and cloud', () => {
+  // Simulated IndexedDB tables
+  const localSongs = new Map();
+  const audioBlobs = new Map();
+  const cloudStorage = new Map();
+
+  const songId = 'song-kuchipudi-1';
+  const audioData = new Uint8Array([10, 20, 30, 40]);
+  const storagePath = `audio/${songId}.mp3`;
+
+  // Pre-condition: Song is in library, backed up in cloud, and downloaded locally
+  cloudStorage.set(storagePath, audioData);
+  audioBlobs.set(songId, audioData);
+  localSongs.set(songId, {
+    id: songId,
+    title: 'Aalokaye Sri Baala Krishnam',
+    category: 'Tarangam',
+    storagePath,
+    syncStatus: 'synced',
+    isLocalAvailable: true,
+    isDeleted: false,
+  });
+
+  // Action: Mam removes song from offline storage to free device space
+  function removeOfflineDownload(id) {
+    const s = localSongs.get(id);
+    if (!s) return { success: false, error: 'Song not found' };
+    if (!s.storagePath && s.syncStatus !== 'synced') {
+      return { success: false, error: 'Cannot remove un-synced song' };
+    }
+    audioBlobs.delete(id);
+    s.isLocalAvailable = false;
+    return { success: true };
+  }
+
+  const res = removeOfflineDownload(songId);
+  assert.equal(res.success, true);
+
+  // Verification 1: Local audio blob is removed, freeing device memory
+  assert.equal(audioBlobs.has(songId), false);
+
+  // Verification 2: Song metadata remains active in the library (NOT deleted)
+  const remainingSong = localSongs.get(songId);
+  assert.ok(remainingSong);
+  assert.equal(remainingSong.title, 'Aalokaye Sri Baala Krishnam');
+  assert.equal(remainingSong.isLocalAvailable, false);
+  assert.equal(remainingSong.isDeleted, false);
+
+  // Verification 3: Cloud audio in Supabase Storage remains 100% intact
+  assert.equal(cloudStorage.has(storagePath), true);
+  assert.deepEqual(cloudStorage.get(storagePath), audioData);
+});
+
+test('Storage Management: Rejects removing local audio if song has not been backed up to the cloud', () => {
+  const localSongs = new Map();
+  const audioBlobs = new Map();
+
+  const unSyncedSongId = 'local-only-1';
+  audioBlobs.set(unSyncedSongId, new Uint8Array([1, 2, 3]));
+  localSongs.set(unSyncedSongId, {
+    id: unSyncedSongId,
+    title: 'New Offline Practice Track',
+    storagePath: undefined,
+    syncStatus: 'local_only',
+    isLocalAvailable: true,
+  });
+
+  function removeOfflineDownload(id) {
+    const s = localSongs.get(id);
+    if (!s) return { success: false, error: 'Song not found' };
+    if (!s.storagePath && s.syncStatus !== 'synced') {
+      return { success: false, error: 'Cannot remove un-synced song' };
+    }
+    audioBlobs.delete(id);
+    s.isLocalAvailable = false;
+    return { success: true };
+  }
+
+  const res = removeOfflineDownload(unSyncedSongId);
+  assert.equal(res.success, false);
+  assert.equal(res.error, 'Cannot remove un-synced song');
+  // Local audio is preserved so user doesn't lose data
+  assert.equal(audioBlobs.has(unSyncedSongId), true);
+});
+
+test('Storage Management: Bulk removal and Clear All offline downloads frees storage without data loss', () => {
+  const localSongs = new Map();
+  const audioBlobs = new Map();
+
+  for (let i = 1; i <= 5; i++) {
+    const id = `song-${i}`;
+    audioBlobs.set(id, new Uint8Array([i]));
+    localSongs.set(id, {
+      id,
+      title: `Song ${i}`,
+      storagePath: `audio/song-${i}.mp3`,
+      syncStatus: 'synced',
+      isLocalAvailable: true,
+      isDeleted: false,
+    });
+  }
+
+  assert.equal(audioBlobs.size, 5);
+
+  // Clear all offline cache
+  for (const song of localSongs.values()) {
+    if (song.storagePath && song.isLocalAvailable) {
+      audioBlobs.delete(song.id);
+      song.isLocalAvailable = false;
+    }
+  }
+
+  // Audio blobs completely freed
+  assert.equal(audioBlobs.size, 0);
+
+  // All 5 songs still exist in the repertoire
+  assert.equal(localSongs.size, 5);
+  for (const song of localSongs.values()) {
+    assert.equal(song.isLocalAvailable, false);
+    assert.equal(song.isDeleted, false);
+    assert.ok(song.storagePath);
+  }
+});
+

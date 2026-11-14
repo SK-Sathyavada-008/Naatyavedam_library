@@ -23,6 +23,7 @@ import {
   CloudDownload,
   RefreshCw,
   WifiOff,
+  HardDrive,
 } from 'lucide-react';
 import type {
   Song,
@@ -69,6 +70,8 @@ export interface LibraryPageProps {
   showInstallBanner?: boolean;
   onInstallPrompt?: () => void;
   onDismissInstallBanner?: () => void;
+  onRemoveOfflineDownload?: (songId: string) => Promise<void>;
+  onBulkRemoveOffline?: (songIds: string[]) => Promise<{ count: number; skipped: number }>;
 }
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
@@ -99,6 +102,8 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   showInstallBanner = false,
   onInstallPrompt,
   onDismissInstallBanner,
+  onRemoveOfflineDownload,
+  onBulkRemoveOffline,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
@@ -248,6 +253,27 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
     await onBulkDownload(ids);
   };
 
+  const handleExecuteBulkRemoveOffline = async () => {
+    if (selectedSongIds.size === 0 || !onBulkRemoveOffline) return;
+    const selectedList = songs.filter((s) => selectedSongIds.has(s.id) && s.isLocalAvailable);
+    if (selectedList.length === 0) {
+      alert('None of the selected songs are currently downloaded to device storage.');
+      return;
+    }
+    const unSynced = selectedList.filter((s) => !s.storagePath && s.syncStatus !== 'synced');
+    if (unSynced.length > 0) {
+      alert(`Cannot remove ${unSynced.length} song(s) from device because they have not synced to the cloud yet. Connect to the internet and sync first.`);
+      return;
+    }
+
+    if (confirm(`Remove downloaded audio for ${selectedList.length} song(s) from this device to free up storage?\n\n• Songs remain safely in your library, programs, and cloud.\n• They can be streamed online or re-downloaded anytime.`)) {
+      const ids = selectedList.map((s) => s.id);
+      handleExitSelectMode();
+      const res = await onBulkRemoveOffline(ids);
+      alert(`Removed ${res.count} downloaded track(s) from device storage. Your repertoire remains intact!`);
+    }
+  };
+
   // Undownloaded songs in shared cloud repertoire
   const undownloadedSongs = useMemo(() => {
     return songs.filter((s) => !s.isDeleted && !s.isLocalAvailable && s.storagePath);
@@ -384,6 +410,20 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                 >
                   <Download className="w-3.5 h-3.5 text-sage" />
                   <span className="hidden xs:inline">Download</span>
+                </Button>
+              )}
+
+              {onBulkRemoveOffline && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleExecuteBulkRemoveOffline}
+                  disabled={selectedSongIds.size === 0}
+                  className="text-xs flex items-center gap-1 px-2.5 h-8 text-amber-800 hover:bg-amber-50 border-amber-200"
+                  title="Free device storage for selected tracks"
+                >
+                  <HardDrive className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden xs:inline">Free Space</span>
                 </Button>
               )}
 
@@ -914,6 +954,29 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               </button>
             )}
 
+            {onRemoveOfflineDownload && selectedSongForMenu.isLocalAvailable && (
+              <button
+                onClick={async () => {
+                  const song = selectedSongForMenu;
+                  setSelectedSongForMenu(null);
+                  if (!song.storagePath && song.syncStatus !== 'synced') {
+                    alert('Cannot remove from device storage: this track has not synced to the cloud yet. Connect to the internet and sync first to protect the audio.');
+                    return;
+                  }
+                  if (confirm(`Remove downloaded audio for "${song.title}" from this device to free up storage?\n\n• The song remains safely in your library, programs, and cloud.\n• It can be streamed online or re-downloaded anytime.`)) {
+                    await onRemoveOfflineDownload(song.id);
+                  }
+                }}
+                className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-amber-50 text-left text-sm font-medium text-amber-900 transition-colors"
+              >
+                <HardDrive className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <div className="min-w-0">
+                  <span className="block font-medium">Remove from Device Storage</span>
+                  <span className="text-[11px] text-amber-700/80 block">Frees device space • Keeps song in library &amp; cloud</span>
+                </div>
+              </button>
+            )}
+
             <button
               onClick={() => {
                 onToggleFavorite(selectedSongForMenu.id);
@@ -953,15 +1016,18 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
             <div className="pt-2 border-t border-border/80 mt-2">
               <button
                 onClick={() => {
-                  if (confirm(`Move "${selectedSongForMenu.title}" to Recovery Bin?`)) {
+                  if (confirm(`Move "${selectedSongForMenu.title}" to Recovery Bin?\n\nThis removes the song from the repertoire for all teachers and students.`)) {
                     onDeleteSong(selectedSongForMenu.id);
                   }
                   setSelectedSongForMenu(null);
                 }}
                 className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-red-50 text-left text-sm font-medium text-red-600 transition-colors"
               >
-                <Trash2 className="w-4 h-4 text-red-500" />
-                <span>Delete Local Song</span>
+                <Trash2 className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <div className="min-w-0">
+                  <span className="block font-medium">Move to Recovery Bin</span>
+                  <span className="text-[11px] text-red-600/70 block">Removes song from library for everyone</span>
+                </div>
               </button>
             </div>
           </div>

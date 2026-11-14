@@ -65,6 +65,8 @@ export interface SettingsPageProps {
   onManualSync?: () => Promise<void>;
   onNavigate?: (view: AppView) => void;
   onLibraryRestored?: () => void;
+  onRemoveOfflineDownload?: (songId: string) => Promise<void>;
+  onClearAllOfflineDownloads?: () => Promise<{ count: number; skipped: number }>;
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
@@ -82,6 +84,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   onManualSync,
   onNavigate,
   onLibraryRestored,
+  onRemoveOfflineDownload,
+  onClearAllOfflineDownloads,
 }) => {
   const isTeacher = user?.role === 'TEACHER';
 
@@ -90,6 +94,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isTeacherAdminModalOpen, setIsTeacherAdminModalOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isManageStorageModalOpen, setIsManageStorageModalOpen] = useState(false);
   const [songToPermanentlyDelete, setSongToPermanentlyDelete] = useState<Song | null>(null);
 
   // Storage & Sync Metrics (Requirement 3)
@@ -528,6 +533,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Device Storage Management Control */}
+        <div className="pt-2 border-t border-border flex items-center justify-between gap-2">
+          <div>
+            <span className="text-xs font-semibold text-charcoal block">Manage Offline Audio</span>
+            <span className="text-[11px] text-charcoal-muted block">
+              {downloadedCount} song{downloadedCount === 1 ? '' : 's'} stored on device
+            </span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setIsManageStorageModalOpen(true)}
+            className="text-xs flex items-center gap-1.5"
+          >
+            <HardDrive className="w-3.5 h-3.5 text-sage" />
+            <span>Manage Storage</span>
+          </Button>
         </div>
       </Card>
 
@@ -1140,6 +1164,121 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             >
               Confirm Permanent Deletion
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Manage Offline Storage Modal */}
+      <Modal
+        isOpen={isManageStorageModalOpen}
+        onClose={() => setIsManageStorageModalOpen(false)}
+        title="Manage Offline Storage"
+        description="Free up phone space by removing downloaded audio. Songs stay safely in your library and cloud."
+      >
+        <div className="space-y-4 py-1">
+          {/* Storage Summary Box */}
+          <div className="p-3.5 rounded-xl bg-canvas-subtle border border-border space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal-muted">Local Storage Used:</span>
+              <span className="font-semibold text-charcoal">
+                {storageInfo ? (storageInfo.usageBytes / 1024 / 1024).toFixed(1) : '0.0'} MB
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal-muted">Available Phone Quota:</span>
+              <span className="font-semibold text-charcoal">
+                {storageInfo && storageInfo.quotaBytes > 0 ? (storageInfo.quotaBytes / 1024 / 1024 / 1024).toFixed(1) : '0.0'} GB
+              </span>
+            </div>
+            <div className="flex justify-between text-xs">
+              <span className="text-charcoal-muted">Downloaded Tracks:</span>
+              <span className="font-semibold text-sage">{downloadedCount} active songs</span>
+            </div>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-sage-light/40 border border-sage/30 text-[11px] text-charcoal-muted leading-relaxed">
+            <strong className="text-charcoal font-semibold">Safe Deletion:</strong> Removing a song from offline storage only deletes the local audio file from this device. The song title, choreography notes, dance categories, and cloud backup remain 100% safe. You can stream or re-download it anytime.
+          </div>
+
+          {/* Clear All Downloads Action */}
+          {downloadedCount > 0 && onClearAllOfflineDownloads && (
+            <div className="pt-1">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  if (confirm(`Clear all ${downloadedCount} downloaded audio files from this phone to free up space?\n\n• All songs remain in your library, programs, and cloud.\n• You can stream them or download individual songs again anytime.`)) {
+                    const res = await onClearAllOfflineDownloads();
+                    alert(`Removed ${res.count} downloaded tracks from this device. Storage freed up!`);
+                    await loadStorageInfo();
+                  }
+                }}
+                className="w-full text-xs text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border-amber-200 py-2.5 font-medium flex items-center justify-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-600" />
+                <span>Clear All Offline Downloads (Free Up All Space)</span>
+              </Button>
+            </div>
+          )}
+
+          {/* List of downloaded songs */}
+          <div className="space-y-2 pt-2">
+            <h5 className="text-xs font-semibold uppercase tracking-wider text-charcoal-muted">
+              Downloaded Songs on this Device ({downloadedCount})
+            </h5>
+
+            {downloadedCount === 0 ? (
+              <div className="p-6 text-center rounded-xl bg-canvas-card border border-border">
+                <CheckCircle2 className="w-8 h-8 text-sage mx-auto mb-2 opacity-80" />
+                <p className="text-xs font-semibold text-charcoal">Offline storage is clear</p>
+                <p className="text-[11px] text-charcoal-muted mt-0.5">
+                  All songs are streaming from the cloud. No audio files are taking space on this device.
+                </p>
+              </div>
+            ) : (
+              <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1 divide-y divide-border/60">
+                {songs
+                  .filter((s) => s.isLocalAvailable && !s.isDeleted)
+                  .map((s) => (
+                    <div
+                      key={s.id}
+                      className="pt-2 first:pt-0 flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs font-semibold text-charcoal block truncate">
+                          {s.title}
+                        </span>
+                        <div className="flex items-center gap-2 text-[10px] text-charcoal-muted">
+                          {s.category && <span>{s.category}</span>}
+                          {s.fileSize ? <span>• {(s.fileSize / 1024 / 1024).toFixed(1)} MB</span> : null}
+                          {s.duration ? <span>• {formatDate(s.createdAt)}</span> : null}
+                        </div>
+                      </div>
+
+                      {onRemoveOfflineDownload && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={async () => {
+                            if (!s.storagePath && s.syncStatus !== 'synced') {
+                              alert('Cannot remove: track has not synced to cloud yet.');
+                              return;
+                            }
+                            if (confirm(`Remove downloaded audio for "${s.title}" from this device? It stays safely in your cloud library.`)) {
+                              await onRemoveOfflineDownload(s.id);
+                              await loadStorageInfo();
+                            }
+                          }}
+                          className="text-[11px] h-7 px-2 text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border-amber-200 flex-shrink-0"
+                          title="Remove from device storage"
+                        >
+                          Free Space
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       </Modal>
