@@ -44,17 +44,23 @@ async function saveSharedIncomingFiles(items) {
 // Intercept Web Share Target POST requests
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  const cleanPath = url.pathname.replace(/\/+$/, '');
 
   // Check if incoming request is a Share Target POST
-  if (event.request.method === 'POST' && url.pathname.endsWith('/share-target')) {
+  if (event.request.method === 'POST' && (cleanPath === '/share-target' || cleanPath.endsWith('/share-target'))) {
     event.respondWith(
       (async () => {
         try {
           const formData = await event.request.formData();
           const itemsToSave = [];
 
-          // 1. Check for files under the 'audio' field specified in manifest
-          const audioEntries = formData.getAll('audio');
+          // 1. Check for files under all common multipart field names
+          const audioEntries = [
+            ...formData.getAll('audio'),
+            ...formData.getAll('audio_files'),
+            ...formData.getAll('file'),
+            ...formData.getAll('files'),
+          ];
 
           // Fallback: check all formData values if sender app used arbitrary field names
           const candidates =
@@ -81,18 +87,20 @@ self.addEventListener('fetch', (event) => {
 
           if (itemsToSave.length > 0) {
             await saveSharedIncomingFiles(itemsToSave);
-            // HTTP 303 See Other redirect to application with incoming_share query
-            return Response.redirect('/?incoming_share=true', 303);
+            // HTTP 303 See Other redirect with absolute URL to application
+            const redirectUrl = new URL('/?incoming_share=true', self.location.origin).href;
+            return Response.redirect(redirectUrl, 303);
           } else {
             console.warn('[SW Share Target] No audio files found in formData payload');
-            return Response.redirect('/?incoming_share_empty=true', 303);
+            const redirectUrl = new URL('/?incoming_share_empty=true', self.location.origin).href;
+            return Response.redirect(redirectUrl, 303);
           }
         } catch (err) {
           console.error('[SW Share Target] Error handling share target POST:', err);
-          return Response.redirect('/?incoming_share_error=true', 303);
+          const redirectUrl = new URL('/?incoming_share_error=true', self.location.origin).href;
+          return Response.redirect(redirectUrl, 303);
         }
       })()
     );
   }
 });
-

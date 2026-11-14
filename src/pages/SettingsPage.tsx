@@ -394,6 +394,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
             : 'Install this application to your Android phone home screen for full-screen offline use and WhatsApp audio sharing.'}
         </p>
 
+        {isStandalone && (
+          <div className="p-2.5 rounded-xl bg-sage-light/40 border border-sage/30 text-xs text-charcoal space-y-1.5">
+            <span className="font-semibold text-sage-hover block">
+              WhatsApp Audio Sharing Guide:
+            </span>
+            <p className="text-[11px] text-charcoal-muted leading-relaxed">
+              1. In WhatsApp, tap or long-press the audio file, then tap the <strong>three dots menu (⋮) &rarr; Share</strong> (do not use the Forward arrow).<br />
+              2. Select <strong>Naatyavedam Library</strong> from Android&apos;s share list.<br />
+              3. <em>Note:</em> If your icon doesn&apos;t appear yet, uninstall the old app icon from your home screen and reinstall it from Chrome so Android updates the native audio intent filters.
+            </p>
+          </div>
+        )}
+
         {!isStandalone && onOpenInstall && (
           <div className="pt-1">
             <Button
