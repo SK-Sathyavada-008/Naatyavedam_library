@@ -6,6 +6,7 @@ import { RegisterPage } from './pages/RegisterPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { PlayerPage } from './pages/PlayerPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ProgramsPage } from './pages/ProgramsPage';
 import { PendingApprovalPage } from './pages/PendingApprovalPage';
 import { AppView, Song, UserProfile, UserRole, ActivityLogEntry } from './types';
 import {
@@ -525,6 +526,16 @@ export const App: React.FC = () => {
             onToggleFavorite={handleToggleFavorite}
             onNavigate={setCurrentView}
             onClearError={player.clearError}
+          />
+        );
+      case 'programs':
+        return (
+          <ProgramsPage
+            user={user}
+            onPlaySong={(songId) => {
+              const target = songs.find((s) => s.id === songId);
+              if (target) player.playSong(target);
+            }}
           />
         );
       case 'settings':

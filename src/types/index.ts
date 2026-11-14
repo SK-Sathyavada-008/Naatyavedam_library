@@ -131,6 +131,7 @@ export type AppView =
   | 'login'
   | 'register'
   | 'library'
+  | 'programs'
   | 'player'
   | 'settings';
 
@@ -146,3 +147,60 @@ export interface ActivityLogEntry {
   timestamp: string;
   details?: string;
 }
+
+// ==============================================================================
+// COLLABORATIVE PROGRAM MANAGEMENT TYPES
+// ==============================================================================
+
+export type ProgramItemSource = 'library_song' | 'program_audio';
+
+export interface Program {
+  id: string;
+  title: string;
+  description?: string;
+  eventDate?: string;
+  createdBy: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+  isDeleted: boolean;
+  deletedAt?: string;
+  itemCount?: number;
+  totalDuration?: number;
+}
+
+export interface ProgramAudio {
+  id: string;
+  programId: string;
+  displayTitle: string;
+  originalFilename: string;
+  storagePath: string;
+  fileFormat: string;
+  fileSize: number;
+  duration: number | null;
+  uploadedBy: string;
+  uploadedByName?: string;
+  createdAt: string;
+  isLocalAvailable?: boolean;
+}
+
+export interface ProgramItem {
+  id: string;
+  programId: string;
+  sourceType: ProgramItemSource;
+  songId?: string;
+  programAudioId?: string;
+  position: number;
+  displayTitleOverride?: string;
+  createdAt: string;
+  updatedAt: string;
+
+  // Resolved metadata for immediate playback & rendering
+  resolvedSong?: Song;
+  resolvedProgramAudio?: ProgramAudio;
+}
+
+export interface ProgramWithItems extends Program {
+  items: ProgramItem[];
+}
+

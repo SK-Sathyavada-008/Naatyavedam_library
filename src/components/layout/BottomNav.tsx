@@ -1,5 +1,5 @@
 import React from 'react';
-import { Music, Disc3, Settings } from 'lucide-react';
+import { Music, CalendarRange, Disc3, Settings } from 'lucide-react';
 import { AppView } from '../../types';
 import { cn } from '../../utils';
 
@@ -19,6 +19,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       view: 'library' as AppView,
       label: 'Library',
       icon: Music,
+    },
+    {
+      view: 'programs' as AppView,
+      label: 'Programs',
+      icon: CalendarRange,
     },
     {
       view: 'player' as AppView,
