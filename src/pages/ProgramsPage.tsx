@@ -90,48 +90,14 @@ export const ProgramsPage: React.FC<ProgramsPageProps> = ({
   // Load programs from IndexedDB
   const refreshPrograms = useCallback(async () => {
     try {
-      let progs = await getLocalPrograms();
-
-      // Seed initial sample program if none exist yet
-      if (progs.length === 0) {
-        const seedProg: Program = {
-          id: `prog-annual-day-2027`,
-          title: 'Annual Day 2027 Recital',
-          description: 'Senior students Kuchipudi recital sequence: Jatiswaram, Shabdam, and Tarangam finale.',
-          eventDate: '2027-02-20',
-          createdBy: user?.id || 'teacher-001',
-          createdByName: user?.fullName || 'Guru Veda',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isDeleted: false,
-        };
-        await saveLocalProgram(seedProg);
-
-        // Attach library songs if available
-        if (librarySongs.length > 0) {
-          const sampleSongs = librarySongs.slice(0, 3);
-          for (let i = 0; i < sampleSongs.length; i++) {
-            await saveLocalProgramItem({
-              id: `pitem-seed-${i}`,
-              programId: seedProg.id,
-              sourceType: 'library_song',
-              songId: sampleSongs[i].id,
-              position: i,
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-          }
-        }
-        progs = await getLocalPrograms();
-      }
-
+      const progs = await getLocalPrograms();
       setPrograms(progs);
     } catch (err) {
       console.error('Failed to load programs from DB:', err);
     } finally {
       setIsLoading(false);
     }
-  }, [user, librarySongs]);
+  }, []);
 
   // Load items for the selected program
   const refreshProgramItems = useCallback(async (progId: string) => {

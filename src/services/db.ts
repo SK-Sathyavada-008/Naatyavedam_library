@@ -577,3 +577,34 @@ export async function saveProgramAudioBlob(
   });
 }
 
+/**
+ * Clear all programs, program items, and program audio from IndexedDB.
+ */
+export async function clearAllPrograms(): Promise<void> {
+  await db.transaction('rw', [db.programs, db.programItems, db.programAudio], async () => {
+    await db.programs.clear();
+    await db.programItems.clear();
+    await db.programAudio.clear();
+  });
+}
+
+/**
+ * Clears all songs except the user's uploaded song ("Aalokaye Sri Baala Krishnam").
+ */
+export async function cleanupSongsKeepOnlyAalokaye(): Promise<void> {
+  const songs = await db.songs.toArray();
+  for (const song of songs) {
+    const isAalokaye =
+      (song.title && song.title.toLowerCase().includes('aalokaye')) ||
+      (song.originalFilename && song.originalFilename.toLowerCase().includes('aalokaye'));
+    if (!isAalokaye) {
+      await db.songs.delete(song.id);
+      await db.audioBlobs.delete(song.id);
+      await db.favorites.delete(song.id);
+      await db.downloadInfo.delete(song.id);
+      await db.pendingOperations.where('songId').equals(song.id).delete();
+    }
+  }
+}
+
+

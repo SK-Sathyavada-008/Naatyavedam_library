@@ -15,7 +15,6 @@ import {
   ArrowUpDown,
   Music2,
   AlertCircle,
-  Sparkles,
   CheckSquare,
   Square,
   Volume2,
@@ -54,7 +53,7 @@ export interface LibraryPageProps {
   onDeleteSong: (songId: string) => void;
   onRenameSong: (songId: string, newTitle: string) => void;
   onImportFiles: (files: FileList | File[]) => void;
-  onLoadSampleRepertoire: () => void;
+  onLoadSampleRepertoire?: () => void;
   onBulkDelete?: (songIds: string[]) => void;
   onBulkFavorite?: (songIds: string[], shouldFavorite: boolean) => void;
   onActiveListChange?: (activeList: Song[]) => void;
@@ -85,7 +84,7 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   onDeleteSong,
   onRenameSong,
   onImportFiles,
-  onLoadSampleRepertoire,
+  onLoadSampleRepertoire: _onLoadSampleRepertoire,
   onBulkDelete,
   onBulkFavorite,
   onActiveListChange,
@@ -645,21 +644,10 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
                     variant="primary"
                     size="md"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex-1 flex items-center justify-center gap-2"
+                    className="w-full flex items-center justify-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Import Audio Files</span>
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    size="md"
-                    onClick={onLoadSampleRepertoire}
-                    className="flex-1 flex items-center justify-center gap-2"
-                    title="Load sample Kuchipudi songs"
-                  >
-                    <Sparkles className="w-4 h-4 text-sage" />
-                    <span>Load Demo Repertoire</span>
                   </Button>
                 </div>
               </div>

@@ -1,0 +1,12 @@
+{
+  "name": "naatyavedam-library",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/((?!assets/|audio/|icons/|favicon\\.ico|manifest\\.webmanifest|sw\\.js|sw-share-target\\.js|workbox-.*\\.js).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

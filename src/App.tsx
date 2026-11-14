@@ -23,6 +23,8 @@ import {
   getSongAudioBlob,
   getAppSetting,
   setAppSetting,
+  clearAllPrograms,
+  cleanupSongsKeepOnlyAalokaye,
 } from './services/db';
 import {
   uploadSongToCloud,
@@ -195,7 +197,52 @@ export const App: React.FC = () => {
   // Initial load from IndexedDB and persistent user session
   useEffect(() => {
     async function init() {
-      // 1. Restore saved user session if exists
+      // 1. Ensure programs are cleared and kept empty as requested
+      await clearAllPrograms();
+
+      // 2. Clear all demo/sample songs, retaining ONLY the user's actual uploaded song (Aalokaye)
+      await cleanupSongsKeepOnlyAalokaye();
+
+      // 3. Preload Aalokaye Sri Baala Krishnam if not yet present in local storage
+      const existingSongs = await getLocalSongs();
+      const hasAalokaye = existingSongs.some(
+        (s) =>
+          (s.title && s.title.toLowerCase().includes('aalokaye')) ||
+          (s.originalFilename && s.originalFilename.toLowerCase().includes('aalokaye'))
+      );
+
+      if (!hasAalokaye) {
+        try {
+          const res = await fetch('/audio/Aalokaye_Sri_Baala_Krishnam.aac');
+          if (res.ok) {
+            const blob = await res.blob();
+            const aalokayeSong: Song = {
+              id: 'song-aalokaye-krishnam',
+              title: 'Aalokaye Sri Baala Krishnam',
+              originalFilename: 'Aalokaye Sri Baala Krishnam.aac',
+              fileType: 'audio/aac',
+              fileSize: blob.size,
+              duration: null,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              isFavorite: true,
+              isLocalAvailable: true,
+              syncStatus: 'local_only',
+              ragam: 'Hamsanandi / Traditional',
+              talam: 'Adi',
+              composer: 'Narayana Teertha',
+              category: 'Tarangam',
+              isDeleted: false,
+              uploadedByName: 'SK',
+            };
+            await saveSongWithBlob(aalokayeSong, blob);
+          }
+        } catch (fetchErr) {
+          console.warn('[Init] Could not load pre-bundled Aalokaye audio:', fetchErr);
+        }
+      }
+
+      // 4. Restore saved user session if exists
       const savedUser = await getAppSetting<UserProfile | null>('currentUser', null);
       if (savedUser) {
         setUser(savedUser);
@@ -204,11 +251,11 @@ export const App: React.FC = () => {
         }
       }
 
-      // 2. Load songs from Dexie
+      // 5. Load songs from Dexie
       await refreshLibraryFromDB();
       setIsDbInitialized(true);
 
-      // 3. Verify session status with Supabase backend
+      // 6. Verify session status with Supabase backend
       await checkLiveSession(savedUser);
     }
     init();
