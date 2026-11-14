@@ -10,6 +10,8 @@ import type {
   Program,
   ProgramItem,
   ProgramAudio,
+  DownloadStatus,
+  StorageEstimateInfo,
 } from '../types/index.ts';
 
 export class NaatyavedamDB extends Dexie {
@@ -78,6 +80,7 @@ export async function saveSongWithBlob(
     const downloadRecord: DownloadInfoRecord = {
       id: song.id,
       songId: song.id,
+      status: 'downloaded',
       isDownloaded: true,
       downloadedAt: song.createdAt,
       fileSize: song.fileSize,
@@ -299,6 +302,115 @@ export async function getStorageEstimate(): Promise<{
 
   const songCount = await db.songs.filter((s) => !s.isDeleted).count();
   return { usage, quota, songCount };
+}
+
+/**
+ * Detailed storage estimation and persistence check.
+ */
+export async function getDetailedStorageEstimate(): Promise<StorageEstimateInfo> {
+  let usageBytes = 0;
+  let quotaBytes = 0;
+  let isPersisted = false;
+
+  if (navigator.storage) {
+    if (navigator.storage.estimate) {
+      try {
+        const est = await navigator.storage.estimate();
+        usageBytes = est.usage || 0;
+        quotaBytes = est.quota || 0;
+      } catch (e) {
+        console.warn('Storage estimate failed:', e);
+      }
+    }
+    if (navigator.storage.persisted) {
+      try {
+        isPersisted = await navigator.storage.persisted();
+      } catch (e) {
+        console.warn('Storage persisted check failed:', e);
+      }
+    }
+  }
+
+  const percentageUsed = quotaBytes > 0 ? (usageBytes / quotaBytes) * 100 : 0;
+  return {
+    usageBytes,
+    quotaBytes,
+    percentageUsed,
+    isPersisted,
+  };
+}
+
+/**
+ * Request persistent browser storage so IndexedDB is not evicted under pressure.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (navigator.storage && navigator.storage.persist) {
+    try {
+      return await navigator.storage.persist();
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Pending Operations Helpers (Uploads, offline renames, deletions)
+ */
+export async function getPendingOperations(): Promise<PendingOperation[]> {
+  return await db.pendingOperations.toArray();
+}
+
+export async function savePendingOperation(op: PendingOperation): Promise<void> {
+  await db.pendingOperations.put(op);
+}
+
+export async function deletePendingOperation(id: string): Promise<void> {
+  await db.pendingOperations.delete(id);
+}
+
+export async function getPendingOperationsCount(): Promise<number> {
+  return await db.pendingOperations.count();
+}
+
+/**
+ * Download Info Helpers
+ */
+export async function saveDownloadInfo(info: DownloadInfoRecord): Promise<void> {
+  await db.downloadInfo.put(info);
+}
+
+export async function getDownloadInfo(songId: string): Promise<DownloadInfoRecord | null> {
+  const record = await db.downloadInfo.get(songId);
+  return record || null;
+}
+
+export async function getAllDownloadInfo(): Promise<Map<string, DownloadInfoRecord>> {
+  const records = await db.downloadInfo.toArray();
+  const map = new Map<string, DownloadInfoRecord>();
+  for (const r of records) {
+    map.set(r.songId, r);
+  }
+  return map;
+}
+
+export async function updateDownloadProgress(
+  songId: string,
+  status: DownloadStatus,
+  progress = 0,
+  error?: string
+): Promise<void> {
+  const existing = await db.downloadInfo.get(songId);
+  await db.downloadInfo.put({
+    id: songId,
+    songId,
+    status,
+    progress,
+    error,
+    isDownloaded: status === 'downloaded',
+    downloadedAt: status === 'downloaded' ? new Date().toISOString() : existing?.downloadedAt,
+    fileSize: existing?.fileSize || 0,
+  });
 }
 
 /**

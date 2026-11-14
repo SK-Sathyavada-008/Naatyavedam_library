@@ -447,3 +447,4 @@ test('Shared Library: Only Teacher (Guru Veda) can permanently delete files from
   assert.equal(backend.songs.has(songId), false);
   assert.equal(backend.storage.has(song.storagePath), false);
 });
+

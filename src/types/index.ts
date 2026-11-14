@@ -136,11 +136,16 @@ export interface FavoriteRecord {
   createdAt: string;
 }
 
+export type DownloadStatus = 'not_downloaded' | 'downloading' | 'downloaded' | 'failed';
+
 export interface DownloadInfoRecord {
-  id: string;
+  id: string; // songId
   songId: string;
+  status: DownloadStatus;
+  progress?: number; // 0 to 100 percentage
+  error?: string;
   isDownloaded: boolean;
-  downloadedAt: string;
+  downloadedAt?: string;
   fileSize: number;
 }
 
@@ -150,8 +155,32 @@ export interface PendingOperation {
   songId: string;
   payload: Record<string, unknown>;
   createdAt: string;
+  lastAttempt?: string;
   status: 'pending' | 'processing' | 'failed';
   retryCount: number;
+  error?: string;
+  progress?: number;
+}
+
+export interface SyncState {
+  isSyncing: boolean;
+  pendingCount: number;
+  lastSyncTime: string | null;
+  error: string | null;
+}
+
+export interface DownloadBatchProgress {
+  current: number;
+  total: number;
+  currentSongTitle: string;
+  percent: number;
+}
+
+export interface StorageEstimateInfo {
+  usageBytes: number;
+  quotaBytes: number;
+  percentageUsed: number;
+  isPersisted: boolean;
 }
 
 export interface AppSettingRecord {

@@ -28,17 +28,27 @@ import {
   cloudRenameSong,
   cloudSoftDeleteSong,
   cloudRestoreSong,
-  downloadSongForOffline,
   fetchSharedCloudLibrary,
   fetchCloudRecoveryBin,
   fetchSharedActivityLogs,
   recordDeviceActivity,
 } from './services/cloudLibrary';
+import {
+  syncAll,
+  downloadTrack,
+  downloadTracksBatch,
+  downloadEntireRepertoire,
+  queueOfflineOperation,
+  subscribeToSyncState,
+  getSyncState,
+} from './services/syncManager';
+import { supabase } from './lib/supabase';
 import { importAudioFiles } from './services/audioImporter';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { generateClassicalMelodyWav } from './utils/audioGenerator';
 import { MOCK_TEACHER_USER, MOCK_STUDENT_USER } from './data/mockDanceMusic';
 import { revalidateSession, signOutUser } from './services/auth';
+import type { SyncState, DownloadBatchProgress } from './types';
 
 export const App: React.FC = () => {
   // Navigation & Authentication state
@@ -61,8 +71,15 @@ export const App: React.FC = () => {
   } | null>(null);
   const [importFailures, setImportFailures] = useState<{ fileName: string; reason: string }[]>([]);
 
-  // Connectivity
+  // Connectivity & Synchronization
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [syncState, setSyncState] = useState<SyncState>(getSyncState());
+  const [downloadBatchProgress, setDownloadBatchProgress] = useState<DownloadBatchProgress | null>(null);
+
+  // Subscribe to sync state updates
+  useEffect(() => {
+    return subscribeToSyncState(setSyncState);
+  }, []);
 
   // Load songs & recovery bin from IndexedDB and sync with shared cloud collection
   const refreshLibraryFromDB = useCallback(async (currentUser?: UserProfile | null) => {
@@ -147,29 +164,39 @@ export const App: React.FC = () => {
     init();
   }, [refreshLibraryFromDB, checkLiveSession]);
 
-  // Online / offline listeners & focus session revalidation
+  // Online / offline listeners & auto-sync when network returns or window becomes active
   useEffect(() => {
-    const handleOnline = () => {
+    const handleOnline = async () => {
       setIsOnline(true);
       checkLiveSession(user);
+      if (user && user.status === 'APPROVED') {
+        await syncAll(user);
+        await refreshLibraryFromDB(user);
+      }
     };
+
     const handleOffline = () => setIsOnline(false);
-    const handleFocus = () => {
-      if (user) {
+
+    const handleVisibilityOrFocus = async () => {
+      if (user && user.status === 'APPROVED' && navigator.onLine) {
         checkLiveSession(user);
+        await syncAll(user);
+        await refreshLibraryFromDB(user);
       }
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    window.addEventListener('focus', handleFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
     };
-  }, [user, checkLiveSession]);
+  }, [user, checkLiveSession, refreshLibraryFromDB]);
 
   // Quick Demo / Local Login Handler
   const handleQuickLogin = async (role: UserRole) => {
@@ -306,12 +333,22 @@ export const App: React.FC = () => {
     }
 
     if (result.importedSongs.length > 0) {
-      // 1. Upload each imported song to Supabase Storage & PostgreSQL
-      if (user && user.status === 'APPROVED' && navigator.onLine) {
-        for (const s of result.importedSongs) {
-          const blob = await getSongAudioBlob(s.id);
-          if (blob) {
-            await uploadSongToCloud(s, blob, user);
+      // 1. Process imported songs: if online, upload; if offline, queue persistent upload
+      if (user && user.status === 'APPROVED') {
+        if (navigator.onLine) {
+          for (const s of result.importedSongs) {
+            const blob = await getSongAudioBlob(s.id);
+            if (blob) {
+              await uploadSongToCloud(s, blob, user);
+            }
+          }
+        } else {
+          // Queue offline uploads so they automatically sync upon reconnection
+          for (const s of result.importedSongs) {
+            await queueOfflineOperation('UPLOAD', s.id, {
+              title: s.title,
+              originalFilename: s.originalFilename,
+            });
           }
         }
       }
@@ -325,15 +362,19 @@ export const App: React.FC = () => {
     }
   };
 
-  // Rename song
+  // Rename song (Offline-first with cloud sync)
   const handleRenameSong = async (songId: string, newTitle: string) => {
     const target = songs.find((s) => s.id === songId);
     if (!target) return;
+    const oldTitle = target.title;
 
-    if (user && user.status === 'APPROVED') {
+    if (navigator.onLine && user && user.status === 'APPROVED') {
       await cloudRenameSong(songId, newTitle, user);
     } else {
       await renameSong(songId, newTitle);
+      if (user && user.status === 'APPROVED') {
+        await queueOfflineOperation('RENAME', songId, { newTitle, oldTitle });
+      }
     }
     await refreshLibraryFromDB();
 
@@ -353,10 +394,13 @@ export const App: React.FC = () => {
       player.pause();
     }
 
-    if (user && user.status === 'APPROVED') {
+    if (navigator.onLine && user && user.status === 'APPROVED') {
       await cloudSoftDeleteSong(songId, user);
     } else {
       await deleteLocalSong(songId, true);
+      if (user && user.status === 'APPROVED') {
+        await queueOfflineOperation('DELETE', songId, { title: target.title });
+      }
     }
     await refreshLibraryFromDB();
   };
@@ -366,18 +410,55 @@ export const App: React.FC = () => {
     const target = deletedSongs.find((s) => s.id === songId);
     if (!target) return;
 
-    if (user && user.status === 'APPROVED') {
+    if (navigator.onLine && user && user.status === 'APPROVED') {
       await cloudRestoreSong(songId, user);
     } else {
       await restoreLocalSong(songId);
+      if (user && user.status === 'APPROVED') {
+        await queueOfflineOperation('RESTORE', songId, { title: target.title });
+      }
     }
     await refreshLibraryFromDB();
   };
 
   // Download song from Supabase Storage for offline practice
   const handleDownloadSong = async (song: Song) => {
-    await downloadSongForOffline(song, user);
+    await downloadTrack(song, user);
     await refreshLibraryFromDB();
+  };
+
+  // Bulk Download selected tracks
+  const handleBulkDownload = async (songIds: string[]) => {
+    const targetSongs = songs.filter((s) => songIds.includes(s.id) && !s.isLocalAvailable);
+    if (targetSongs.length === 0) return;
+    try {
+      await downloadTracksBatch(targetSongs, user, (progress) => {
+        setDownloadBatchProgress(progress);
+      });
+    } finally {
+      setDownloadBatchProgress(null);
+      await refreshLibraryFromDB();
+    }
+  };
+
+  // Download entire repertoire for full offline capability
+  const handleDownloadAll = async () => {
+    try {
+      await downloadEntireRepertoire(songs, user, (progress) => {
+        setDownloadBatchProgress(progress);
+      });
+    } finally {
+      setDownloadBatchProgress(null);
+      await refreshLibraryFromDB();
+    }
+  };
+
+  // Manual Sync trigger
+  const handleManualSync = async () => {
+    if (user && user.status === 'APPROVED' && navigator.onLine) {
+      await syncAll(user);
+      await refreshLibraryFromDB(user);
+    }
   };
 
   // Permanent Delete Song - STRICTLY TEACHER ONLY
@@ -412,15 +493,34 @@ export const App: React.FC = () => {
     await refreshLibraryFromDB();
   };
 
-  // Toggle favorite
+  // Toggle favorite (Offline-first with cloud user_favorites sync)
   const handleToggleFavorite = async (songId: string) => {
+    const target = songs.find((s) => s.id === songId);
+    if (!target) return;
+    const newStatus = !target.isFavorite;
+
     await toggleSongFavorite(songId);
+
+    if (navigator.onLine && user && user.status === 'APPROVED') {
+      try {
+        if (newStatus) {
+          await supabase.from('user_favorites').upsert({ user_id: user.id, song_id: songId });
+        } else {
+          await supabase.from('user_favorites').delete().eq('user_id', user.id).eq('song_id', songId);
+        }
+      } catch (err) {
+        console.warn('[Favorites] Cloud sync error:', err);
+      }
+    } else if (user && user.status === 'APPROVED') {
+      await queueOfflineOperation('FAVORITE', songId, { isFavorite: newStatus });
+    }
+
     await refreshLibraryFromDB();
 
     if (player.currentSong?.id === songId) {
       player.playSong({
         ...player.currentSong,
-        isFavorite: !player.currentSong.isFavorite,
+        isFavorite: newStatus,
       });
     }
   };
@@ -584,6 +684,12 @@ export const App: React.FC = () => {
             importFailures={importFailures}
             onClearImportFailures={() => setImportFailures([])}
             onDownloadSong={handleDownloadSong}
+            onBulkDownload={handleBulkDownload}
+            onDownloadAll={handleDownloadAll}
+            downloadBatchProgress={downloadBatchProgress}
+            syncState={syncState}
+            onManualSync={handleManualSync}
+            isOnline={isOnline}
           />
         );
     }

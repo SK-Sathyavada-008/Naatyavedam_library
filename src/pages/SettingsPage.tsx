@@ -18,12 +18,23 @@ import {
   Copy,
   AlertTriangle,
 } from 'lucide-react';
-import { UserProfile, UserRole, Song, ActivityLogEntry, PasswordResetRequest } from '../types';
+import {
+  UserProfile,
+  UserRole,
+  Song,
+  ActivityLogEntry,
+  PasswordResetRequest,
+  StorageEstimateInfo,
+} from '../types';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { Modal } from '../components/ui/Modal';
 import { formatDate } from '../utils';
+import {
+  getDetailedStorageEstimate,
+  requestPersistentStorage,
+} from '../services/db';
 import {
   fetchPendingStudents,
   fetchActiveStudents,
@@ -62,7 +73,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isTeacherAdminModalOpen, setIsTeacherAdminModalOpen] = useState(false);
+
+  // Offline Storage Info
   const [isStoragePersisted, setIsStoragePersisted] = useState(false);
+  const [storageInfo, setStorageInfo] = useState<StorageEstimateInfo | null>(null);
+
+  const loadStorageInfo = useCallback(async () => {
+    try {
+      const info = await getDetailedStorageEstimate();
+      setStorageInfo(info);
+      setIsStoragePersisted(info.isPersisted);
+    } catch (e) {
+      console.warn('Storage estimate failed:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStorageInfo();
+  }, [loadStorageInfo]);
 
   // Teacher Administration Data
   const [activeTab, setActiveTab] = useState<'pending' | 'students' | 'resets'>('pending');
@@ -110,13 +138,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
   }, [isTeacher, loadTeacherAdminData]);
 
   const handleRequestStorage = async () => {
-    if (navigator.storage && navigator.storage.persist) {
-      const persisted = await navigator.storage.persist();
-      setIsStoragePersisted(persisted);
-      alert(persisted ? 'Persistent local storage granted!' : 'Storage persistence not granted by browser.');
-    } else {
-      alert('Persistent storage API not supported on this browser.');
-    }
+    const granted = await requestPersistentStorage();
+    setIsStoragePersisted(granted);
+    await loadStorageInfo();
+    alert(
+      granted
+        ? 'Persistent storage granted! Repertoire music in IndexedDB is protected against browser clearing.'
+        : 'Storage persistence status updated.'
+    );
   };
 
   // Teacher approves student
@@ -346,7 +375,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
       )}
 
-      {/* Offline Storage Status */}
+      {/* Offline Storage & Persistence Status */}
       <Card className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-charcoal">
@@ -357,12 +386,28 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
         </div>
 
         <p className="text-xs text-charcoal-muted leading-relaxed">
-          Audio files are cached in your phone's IndexedDB for offline rehearsals at the dance hall.
+          Audio recordings and dance music are stored in your device&apos;s IndexedDB for offline rehearsals at the stage or academy.
         </p>
+
+        {/* Live Storage Meter */}
+        {storageInfo && storageInfo.quotaBytes > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <div className="flex justify-between text-xs text-charcoal-muted">
+              <span>Used: {(storageInfo.usageBytes / 1024 / 1024).toFixed(1)} MB</span>
+              <span>Available: {(storageInfo.quotaBytes / 1024 / 1024 / 1024).toFixed(1)} GB</span>
+            </div>
+            <div className="w-full bg-border rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-sage h-2 rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(1, storageInfo.percentageUsed))}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         <div className="pt-1 flex items-center justify-between">
           <span className="text-xs text-charcoal-muted">
-            Status: {isStoragePersisted ? 'Persistent storage enabled' : 'Standard local cache'}
+            Status: {isStoragePersisted ? 'Persistent storage enabled (Protected)' : 'Standard cache (Click to protect)'}
           </span>
           <Button
             variant="secondary"

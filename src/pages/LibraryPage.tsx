@@ -21,8 +21,17 @@ import {
   Volume2,
   Download,
   Cloud,
+  CloudDownload,
+  RefreshCw,
+  WifiOff,
 } from 'lucide-react';
-import type { Song, UserProfile, SortOption } from '../types/index.ts';
+import type {
+  Song,
+  UserProfile,
+  SortOption,
+  DownloadBatchProgress,
+  SyncState,
+} from '../types/index.ts';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Badge } from '../components/ui/Badge';
@@ -51,6 +60,12 @@ export interface LibraryPageProps {
   importFailures?: { fileName: string; reason: string }[];
   onClearImportFailures?: () => void;
   onDownloadSong?: (song: Song) => Promise<void>;
+  onBulkDownload?: (songIds: string[]) => Promise<void>;
+  onDownloadAll?: () => Promise<void>;
+  downloadBatchProgress?: DownloadBatchProgress | null;
+  syncState?: SyncState;
+  onManualSync?: () => Promise<void>;
+  isOnline?: boolean;
 }
 
 export const LibraryPage: React.FC<LibraryPageProps> = ({
@@ -73,6 +88,12 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   importFailures = [],
   onClearImportFailures,
   onDownloadSong,
+  onBulkDownload,
+  onDownloadAll,
+  downloadBatchProgress,
+  syncState,
+  onManualSync,
+  isOnline = true,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
@@ -215,6 +236,24 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
     handleExitSelectMode();
   };
 
+  const handleExecuteBulkDownload = async () => {
+    if (selectedSongIds.size === 0 || !onBulkDownload) return;
+    const ids = Array.from(selectedSongIds);
+    handleExitSelectMode();
+    await onBulkDownload(ids);
+  };
+
+  // Undownloaded songs in shared cloud repertoire
+  const undownloadedSongs = useMemo(() => {
+    return songs.filter((s) => !s.isDeleted && !s.isLocalAvailable && s.storagePath);
+  }, [songs]);
+
+  const totalUndownloadedBytes = useMemo(() => {
+    return undownloadedSongs.reduce((acc, s) => acc + (s.fileSize || 0), 0);
+  }, [undownloadedSongs]);
+
+  const [isDownloadAllModalOpen, setIsDownloadAllModalOpen] = useState(false);
+
   const handleOpenRename = (song: Song) => {
     setSelectedSongForMenu(null);
     setSongToRename(song);
@@ -321,6 +360,20 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5">
+              {onBulkDownload && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleExecuteBulkDownload}
+                  disabled={selectedSongIds.size === 0}
+                  className="text-xs flex items-center gap-1 px-2.5 h-8"
+                  title="Download Selected for Offline Practice"
+                >
+                  <Download className="w-3.5 h-3.5 text-sage" />
+                  <span className="hidden xs:inline">Download</span>
+                </Button>
+              )}
+
               <Button
                 variant="secondary"
                 size="sm"
@@ -454,6 +507,66 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
               <X className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+      )}
+
+      {/* Network & Offline Synchronization Status Bar */}
+      {!isOnline ? (
+        <div className="mb-3 px-3.5 py-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-2 shadow-subtle">
+          <div className="flex items-center gap-2">
+            <WifiOff className="w-4 h-4 text-amber-700 flex-shrink-0" />
+            <span>
+              <strong>Offline Mode:</strong> Repertoire stored locally in IndexedDB.
+              {(syncState?.pendingCount || 0) > 0 && ` (${syncState?.pendingCount} changes waiting to sync)`}
+            </span>
+          </div>
+          <Badge variant="neutral" size="sm">Local DB</Badge>
+        </div>
+      ) : syncState?.isSyncing ? (
+        <div className="mb-3 px-3.5 py-2 rounded-xl bg-sage-light/60 border border-sage/30 text-xs text-sage-hover flex items-center justify-between gap-2 shadow-subtle">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="w-4 h-4 text-sage animate-spin flex-shrink-0" />
+            <span>Synchronizing repertoire with cloud...</span>
+          </div>
+        </div>
+      ) : onManualSync && (syncState?.pendingCount || 0) > 0 ? (
+        <div className="mb-3 px-3.5 py-2 rounded-xl bg-sage-light/40 border border-sage/20 text-xs text-charcoal flex items-center justify-between gap-2 shadow-subtle">
+          <span className="flex items-center gap-1.5 text-xs text-charcoal-muted">
+            <Cloud className="w-4 h-4 text-sage" />
+            <span>{syncState?.pendingCount} change(s) pending synchronization</span>
+          </span>
+          <Button variant="secondary" size="sm" onClick={onManualSync} className="h-7 text-xs flex items-center gap-1">
+            <RefreshCw className="w-3 h-3 text-sage" />
+            <span>Sync Now</span>
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Download Entire Repertoire Banner for New Device / Cloud Tracks */}
+      {isOnline && undownloadedSongs.length > 0 && onDownloadAll && (
+        <div className="mb-3 p-3.5 rounded-2xl bg-canvas-card border border-sage/40 shadow-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-sage-light text-sage flex items-center justify-center flex-shrink-0 mt-0.5">
+              <CloudDownload className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-charcoal">
+                {undownloadedSongs.length} Cloud Track{undownloadedSongs.length === 1 ? '' : 's'} Available
+              </h4>
+              <p className="text-[11px] text-charcoal-muted leading-tight mt-0.5">
+                Download collection (~{(totalUndownloadedBytes / 1024 / 1024).toFixed(1)} MB) to practice 100% offline without internet.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setIsDownloadAllModalOpen(true)}
+            className="self-end sm:self-auto text-xs flex items-center gap-1.5 px-3 py-1.5 h-8 flex-shrink-0"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Download All Offline</span>
+          </Button>
         </div>
       )}
 
@@ -886,6 +999,74 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Download All Repertoire Confirmation Modal */}
+      <Modal
+        isOpen={isDownloadAllModalOpen}
+        onClose={() => setIsDownloadAllModalOpen(false)}
+        title="Download Repertoire Offline?"
+        description="Download classical dance recordings to this device."
+      >
+        <div className="space-y-3 py-1">
+          <p className="text-xs text-charcoal leading-relaxed">
+            This will download <strong>{undownloadedSongs.length} song{undownloadedSongs.length === 1 ? '' : 's'}</strong> (~{(totalUndownloadedBytes / 1024 / 1024).toFixed(1)} MB) into your browser's IndexedDB storage.
+          </p>
+          <div className="p-3 rounded-xl bg-sage-light/50 border border-sage/30 text-xs text-charcoal space-y-1">
+            <div className="font-semibold text-sage-hover">Offline Practice Guarantee</div>
+            <p className="text-[11px] text-charcoal-muted">
+              Once downloaded, you can rehearse in dance halls and stages even with zero cellular signal or WiFi.
+            </p>
+          </div>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button variant="secondary" onClick={() => setIsDownloadAllModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                setIsDownloadAllModalOpen(false);
+                if (onDownloadAll) {
+                  await onDownloadAll();
+                }
+              }}
+            >
+              Start Download
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Download Batch Progress Modal */}
+      {downloadBatchProgress && (
+        <Modal
+          isOpen={Boolean(downloadBatchProgress)}
+          onClose={() => {}}
+          title="Downloading Repertoire"
+        >
+          <div className="py-4 text-center space-y-4">
+            <div className="w-12 h-12 border-3 border-sage border-t-transparent rounded-full animate-spin mx-auto" />
+            <div>
+              <p className="text-sm font-semibold text-charcoal">
+                Downloading {downloadBatchProgress.current} of {downloadBatchProgress.total}
+              </p>
+              <p className="text-xs text-sage-hover font-medium mt-0.5 truncate max-w-xs mx-auto">
+                {downloadBatchProgress.currentSongTitle}
+              </p>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-border rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-sage h-2 rounded-full transition-all duration-300"
+                style={{ width: `${downloadBatchProgress.percent}%` }}
+              />
+            </div>
+            <p className="text-xs text-charcoal-subtle">
+              {downloadBatchProgress.percent}% completed. Please keep app open while downloading audio.
+            </p>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };
