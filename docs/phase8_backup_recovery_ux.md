@@ -81,3 +81,4 @@ Phase 8 finalizes **Naatyavedam Library** by implementing a complete backup and 
 - `tests/backupRecovery.test.js` &rarr; **6 / 6 passing** (ZIP builder, ZIP parser, manifest validation, recovery bin, storage metrics).
 - Full Test Suite (`tests/*.test.js`) &rarr; **49 / 49 passing** across all 8 development phases.
 - `npx tsc --noEmit` &rarr; **0 errors**.
+
