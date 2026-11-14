@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   User,
   Lock,
@@ -18,8 +18,6 @@ import {
   signIn,
   requestPasswordReset,
   completePasswordReset,
-  checkTeacherInitialized,
-  initializeTeacher,
 } from '../services/auth';
 
 export interface LoginPageProps {
@@ -50,19 +48,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const [isForgotLoading, setIsForgotLoading] = useState(false);
 
-  // Teacher Initialization State
-  const [isTeacherInitialized, setIsTeacherInitialized] = useState<boolean>(true);
-  const [initTeacherLoading, setInitTeacherLoading] = useState(false);
-  const [initSuccessMessage, setInitSuccessMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function checkInit() {
-      const initialized = await checkTeacherInitialized();
-      setIsTeacherInitialized(initialized);
-    }
-    checkInit();
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -92,12 +77,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleQuickFill = (presetUser: string, presetPass: string) => {
-    setUsername(presetUser);
-    setPassword(presetPass);
-    setError(null);
   };
 
   // Submit Password Reset Request (Step 1)
@@ -175,27 +154,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     }
   };
 
-  // One-time teacher account setup if database has no teacher yet
-  const handleOneTimeTeacherInit = async () => {
-    setInitTeacherLoading(true);
-    setError(null);
-    try {
-      const result = await initializeTeacher('veda', 'naatyavedam', 'Guru Veda');
-      if (result.success) {
-        setIsTeacherInitialized(true);
-        setInitSuccessMessage('Teacher account initialized! Username: veda, Password: naatyavedam');
-        setUsername('veda');
-        setPassword('naatyavedam');
-      } else {
-        setError(result.error || 'Teacher initialization failed.');
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Teacher setup error.');
-    } finally {
-      setInitTeacherLoading(false);
-    }
-  };
-
   return (
     <div className="flex-1 flex flex-col justify-between p-6 sm:p-8 max-w-md mx-auto w-full min-h-screen">
       {/* Top Header Navigation */}
@@ -214,14 +172,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             Access the Kuchipudi dance music library
           </p>
         </div>
-
-        {/* Revocation or Init Success Banner */}
-        {initSuccessMessage && (
-          <div className="mb-4 p-3 rounded-xl bg-sage-light border border-sage-border text-xs text-sage-hover flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-            <span>{initSuccessMessage}</span>
-          </div>
-        )}
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -306,44 +256,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </Button>
           </div>
         </form>
-
-        {/* Quick Testing Credentials Helper */}
-        <div className="mt-8 p-3 rounded-xl bg-canvas-subtle/80 border border-border text-center">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-charcoal-subtle mb-2">
-            School Accounts Quick-Fill
-          </p>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => handleQuickFill('veda', 'naatyavedam')}
-              className="flex-1 py-1.5 px-2 rounded-lg bg-canvas-card border border-border text-xs text-charcoal font-medium hover:border-sage transition-colors"
-            >
-              Teacher (veda)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill('sk', 'naatyavedam')}
-              className="flex-1 py-1.5 px-2 rounded-lg bg-canvas-card border border-border text-xs text-charcoal font-medium hover:border-sage transition-colors"
-            >
-              Student (sk)
-            </button>
-          </div>
-
-          {/* Teacher Initialization helper if needed */}
-          {!isTeacherInitialized && (
-            <div className="mt-3 pt-2 border-t border-border">
-              <Button
-                variant="sage-subtle"
-                size="sm"
-                onClick={handleOneTimeTeacherInit}
-                disabled={initTeacherLoading}
-                className="w-full text-xs"
-              >
-                {initTeacherLoading ? 'Initializing Teacher...' : 'Initialize Teacher (veda / naatyavedam)'}
-              </Button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Bottom Switcher */}

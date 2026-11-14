@@ -53,7 +53,6 @@ export interface LibraryPageProps {
   onDeleteSong: (songId: string) => void;
   onRenameSong: (songId: string, newTitle: string) => void;
   onImportFiles: (files: FileList | File[]) => void;
-  onLoadSampleRepertoire?: () => void;
   onBulkDelete?: (songIds: string[]) => void;
   onBulkFavorite?: (songIds: string[], shouldFavorite: boolean) => void;
   onActiveListChange?: (activeList: Song[]) => void;
@@ -84,7 +83,6 @@ export const LibraryPage: React.FC<LibraryPageProps> = ({
   onDeleteSong,
   onRenameSong,
   onImportFiles,
-  onLoadSampleRepertoire: _onLoadSampleRepertoire,
   onBulkDelete,
   onBulkFavorite,
   onActiveListChange,

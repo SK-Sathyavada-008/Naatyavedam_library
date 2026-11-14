@@ -8,7 +8,6 @@ import {
   Users,
   History,
   RotateCcw,
-  Sparkles,
   KeyRound,
   ShieldCheck,
   UserX,
@@ -23,7 +22,6 @@ import {
 } from 'lucide-react';
 import {
   UserProfile,
-  UserRole,
   Song,
   ActivityLogEntry,
   PasswordResetRequest,
@@ -53,7 +51,6 @@ import {
 
 export interface SettingsPageProps {
   user: UserProfile | null;
-  onRoleSwitch?: (role: UserRole) => void;
   onSignOut: () => void;
   deletedSongs: Song[];
   activityLogs: ActivityLogEntry[];
@@ -72,7 +69,6 @@ export interface SettingsPageProps {
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({
   user,
-  onRoleSwitch,
   onSignOut,
   deletedSongs,
   activityLogs,
@@ -605,37 +601,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({
           <span className="font-semibold text-charcoal">Dexie IndexedDB + Service Worker</span>
         </div>
       </div>
-
-      {/* Role Simulator (Testing Teacher vs Student view during development) */}
-      {onRoleSwitch && (
-        <Card className="bg-canvas-subtle/40 border-border/60 space-y-2.5 p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-charcoal">
-              <Sparkles className="w-3.5 h-3.5 text-sage" />
-              <h4 className="text-xs font-semibold">Role View Switcher (Testing)</h4>
-            </div>
-            <span className="text-[10px] text-charcoal-muted font-medium">Switch Active Role</span>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant={isTeacher ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => onRoleSwitch('TEACHER')}
-              className="text-xs h-8"
-            >
-              Teacher (Veda)
-            </Button>
-            <Button
-              variant={!isTeacher ? 'primary' : 'secondary'}
-              size="sm"
-              onClick={() => onRoleSwitch('STUDENT')}
-              className="text-xs h-8"
-            >
-              Student (SK)
-            </Button>
-          </div>
-        </Card>
-      )}
 
       {/* Sign Out Button */}
       <div className="pt-2">

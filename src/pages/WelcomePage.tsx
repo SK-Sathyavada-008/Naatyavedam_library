@@ -1,16 +1,14 @@
 import React from 'react';
 import { Music2, ShieldCheck, WifiOff, ArrowRight } from 'lucide-react';
 import { Button } from '../components/ui/Button';
-import { AppView, UserRole } from '../types';
+import { AppView } from '../types';
 
 export interface WelcomePageProps {
   onNavigate: (view: AppView) => void;
-  onQuickLogin: (role: UserRole) => void;
 }
 
 export const WelcomePage: React.FC<WelcomePageProps> = ({
   onNavigate,
-  onQuickLogin,
 }) => {
   return (
     <div className="flex-1 flex flex-col justify-between p-6 sm:p-8 max-w-lg mx-auto w-full min-h-screen">
@@ -64,7 +62,7 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
         </div>
       </div>
 
-      {/* Action Buttons & Quick Demo Access */}
+      {/* Action Buttons */}
       <div className="pb-8 pt-6 flex flex-col gap-3.5">
         <Button
           variant="primary"
@@ -84,27 +82,6 @@ export const WelcomePage: React.FC<WelcomePageProps> = ({
         >
           Register as Student
         </Button>
-
-        {/* Phase 1 Local Dev Bypass Shortcuts */}
-        <div className="mt-4 p-3 rounded-xl bg-canvas-subtle/80 border border-border/60 text-center">
-          <p className="text-[11px] uppercase tracking-wider font-semibold text-charcoal-subtle mb-2">
-            Phase 1 Quick Demo Modes
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => onQuickLogin('TEACHER')}
-              className="px-2.5 py-1.5 rounded-lg bg-canvas-card border border-border hover:border-sage text-xs font-medium text-charcoal transition-colors text-center"
-            >
-              Enter as Teacher
-            </button>
-            <button
-              onClick={() => onQuickLogin('STUDENT')}
-              className="px-2.5 py-1.5 rounded-lg bg-canvas-card border border-border hover:border-sage text-xs font-medium text-charcoal transition-colors text-center"
-            >
-              Enter as Student
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

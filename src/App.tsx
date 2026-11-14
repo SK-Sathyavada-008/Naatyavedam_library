@@ -10,7 +10,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ProgramsPage } from './pages/ProgramsPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PendingApprovalPage } from './pages/PendingApprovalPage';
-import { AppView, Song, UserProfile, UserRole, ActivityLogEntry } from './types';
+import { AppView, Song, UserProfile, ActivityLogEntry } from './types';
 import {
   getLocalSongs,
   getRecoveryBinSongs,
@@ -49,8 +49,6 @@ import {
 import { supabase } from './lib/supabase';
 import { importAudioFiles } from './services/audioImporter';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { generateClassicalMelodyWav } from './utils/audioGenerator';
-import { MOCK_TEACHER_USER, MOCK_STUDENT_USER } from './data/mockDanceMusic';
 import { revalidateSession, signOutUser } from './services/auth';
 import {
   getPendingSharedFiles,
@@ -358,15 +356,6 @@ export const App: React.FC = () => {
     };
   }, [user, checkLiveSession, refreshLibraryFromDB]);
 
-  // Quick Demo / Local Login Handler
-  const handleQuickLogin = async (role: UserRole) => {
-    const profile = role === 'TEACHER' ? MOCK_TEACHER_USER : MOCK_STUDENT_USER;
-    setUser(profile);
-    await setAppSetting('currentUser', profile);
-    setRevocationMessage(null);
-    navigateTo('library');
-  };
-
   const handleLoginSuccess = async (profile: UserProfile) => {
     setUser(profile);
     await setAppSetting('currentUser', profile);
@@ -384,99 +373,6 @@ export const App: React.FC = () => {
     setRevocationMessage(null);
     player.pause();
     navigateTo('welcome');
-  };
-
-  // Seed sample real playable classical audio blobs for immediate testing
-  const handleLoadSampleRepertoire = async () => {
-    setImportProgress({
-      current: 1,
-      total: 3,
-      currentFileName: 'Synthesizing Kalyani Jatiswaram Practice WAV...',
-    });
-
-    try {
-      // 1. Kalyani Jatiswaram (A3, C#4, E4, G#4)
-      const blob1 = generateClassicalMelodyWav(16, [220, 277.18, 329.63, 415.3]);
-      const song1: Song = {
-        id: `sample_jati_${Date.now()}`,
-        title: 'Kalyani Jatiswaram (Practice Speed)',
-        originalFilename: 'kalyani_jatiswaram_practice.wav',
-        fileType: 'audio/wav',
-        fileSize: blob1.size,
-        duration: 16,
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        updatedAt: new Date(Date.now() - 3600000).toISOString(),
-        isFavorite: true,
-        isLocalAvailable: true,
-        syncStatus: 'local_only',
-        ragam: 'Kalyani',
-        talam: 'Rupaka',
-        composer: 'Tanjore Quartet',
-        category: 'Jatiswaram',
-        isDeleted: false,
-      };
-      await saveSongWithBlob(song1, blob1);
-
-      setImportProgress({
-        current: 2,
-        total: 3,
-        currentFileName: 'Synthesizing Mohanam Tanpura Drone WAV...',
-      });
-
-      // 2. Mohanam Drone (A3, C#4, E4, F#4)
-      const blob2 = generateClassicalMelodyWav(20, [220, 277.18, 329.63, 370]);
-      const song2: Song = {
-        id: `sample_drone_${Date.now() + 1}`,
-        title: 'Mohanam Tanpura Drone (Sa-Pa-Sa)',
-        originalFilename: 'mohanam_tanpura_drone.wav',
-        fileType: 'audio/wav',
-        fileSize: blob2.size,
-        duration: 20,
-        createdAt: new Date(Date.now() - 7200000).toISOString(),
-        updatedAt: new Date(Date.now() - 7200000).toISOString(),
-        isFavorite: true,
-        isLocalAvailable: true,
-        syncStatus: 'local_only',
-        ragam: 'Mohanam',
-        talam: 'Adi',
-        category: 'Practice / Talam',
-        isDeleted: false,
-      };
-      await saveSongWithBlob(song2, blob2);
-
-      setImportProgress({
-        current: 3,
-        total: 3,
-        currentFileName: 'Synthesizing Manduka Shabdam Chime WAV...',
-      });
-
-      // 3. Manduka Shabdam (A3, D4, E4)
-      const blob3 = generateClassicalMelodyWav(14, [220, 293.66, 329.63]);
-      const song3: Song = {
-        id: `sample_shabdam_${Date.now() + 2}`,
-        title: 'Manduka Shabdam (The Frog Legend)',
-        originalFilename: 'manduka_shabdam_gajendra.wav',
-        fileType: 'audio/wav',
-        fileSize: blob3.size,
-        duration: 14,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        isFavorite: false,
-        isLocalAvailable: true,
-        syncStatus: 'local_only',
-        ragam: 'Ragamalika',
-        talam: 'Misra Chapu',
-        category: 'Shabdam',
-        isDeleted: false,
-      };
-      await saveSongWithBlob(song3, blob3);
-
-      await refreshLibraryFromDB();
-    } catch (err) {
-      console.error('Failed to load demo repertoire:', err);
-    } finally {
-      setImportProgress(null);
-    }
   };
 
   // Import files from user's phone / computer
@@ -805,17 +701,6 @@ export const App: React.FC = () => {
     await refreshLibraryFromDB();
   };
 
-  const handleRoleSwitch = async (newRole: UserRole) => {
-    if (!user) return;
-    const updatedUser: UserProfile = {
-      ...user,
-      role: newRole,
-      fullName: newRole === 'TEACHER' ? 'Guru Veda' : user.username === 'sk' ? 'SK' : `${user.username} (Student)`,
-    };
-    setUser(updatedUser);
-    await setAppSetting('currentUser', updatedUser);
-  };
-
   if (!isDbInitialized) {
     return (
       <div className="min-h-screen bg-canvas flex items-center justify-center">
@@ -846,12 +731,7 @@ export const App: React.FC = () => {
   const renderViewContent = () => {
     switch (currentView) {
       case 'welcome':
-        return (
-          <WelcomePage
-            onNavigate={navigateTo}
-            onQuickLogin={handleQuickLogin}
-          />
-        );
+        return <WelcomePage onNavigate={navigateTo} />;
       case 'login':
         return (
           <LoginPage
@@ -903,7 +783,6 @@ export const App: React.FC = () => {
         return (
           <SettingsPage
             user={user}
-            onRoleSwitch={handleRoleSwitch}
             onSignOut={handleSignOut}
             deletedSongs={deletedSongs}
             activityLogs={activityLogs}
@@ -944,7 +823,6 @@ export const App: React.FC = () => {
             onDeleteSong={handleDeleteSong}
             onRenameSong={handleRenameSong}
             onImportFiles={handleImportFiles}
-            onLoadSampleRepertoire={handleLoadSampleRepertoire}
             onBulkDelete={handleBulkDelete}
             onBulkFavorite={handleBulkFavorite}
             onActiveListChange={setActivePlaylist}
