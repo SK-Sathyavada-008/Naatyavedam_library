@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { UserProfile, PasswordResetRequest } from '../types/index.ts';
 
-const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+const USERNAME_REGEX = /^[a-z0-9_]{2,20}$/;
 const INTERNAL_DOMAIN = '@naatyavedam.com';
 
 /**
@@ -13,7 +13,7 @@ export function usernameToEmail(username: string): string {
 
 /**
  * Validate username formatting:
- * - 3 to 20 characters
+ * - 2 to 20 characters
  * - Lowercase alphanumeric and underscores only
  */
 export function validateUsername(username: string): { isValid: boolean; error?: string } {
@@ -21,8 +21,8 @@ export function validateUsername(username: string): { isValid: boolean; error?: 
   if (!clean) {
     return { isValid: false, error: 'Username is required.' };
   }
-  if (clean.length < 3) {
-    return { isValid: false, error: 'Username must be at least 3 characters long.' };
+  if (clean.length < 2) {
+    return { isValid: false, error: 'Username must be at least 2 characters long.' };
   }
   if (clean.length > 20) {
     return { isValid: false, error: 'Username cannot exceed 20 characters.' };
@@ -168,7 +168,11 @@ export async function signIn(
     const profile: UserProfile = {
       id: isTeacher ? 'teacher-001' : 'student-001',
       username: cleanUsername,
-      fullName: isTeacher ? 'Guru Keerthana (Dance Teacher)' : `${cleanUsername} (Student)`,
+      fullName: isTeacher
+        ? 'Guru Veda'
+        : cleanUsername === 'sk'
+        ? 'SK'
+        : `${cleanUsername} (Student)`,
       role: isTeacher ? 'TEACHER' : 'STUDENT',
       status: 'APPROVED',
       createdAt: new Date().toISOString(),
@@ -593,7 +597,7 @@ export async function checkTeacherInitialized(): Promise<boolean> {
 export async function initializeTeacher(
   username: string,
   password: string,
-  fullName = 'Guru Keerthana (Dance Teacher)'
+  fullName = 'Guru Veda'
 ): Promise<{ success: boolean; error?: string }> {
   if (!isSupabaseConfigured()) return { success: true };
 
@@ -613,3 +617,31 @@ export async function initializeTeacher(
 
   return { success: true };
 }
+
+/**
+ * Student Setup: Create initial student account (sk).
+ */
+export async function createInitialStudent(
+  username: string,
+  password: string,
+  fullName = 'SK'
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured()) return { success: true };
+
+  const { data, error } = await supabase.rpc('create_initial_student_account', {
+    p_username: username,
+    p_password: password,
+    p_full_name: fullName,
+  });
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+
+  if (data?.success === false) {
+    return { success: false, error: data?.error || 'Failed to create student account.' };
+  }
+
+  return { success: true };
+}
+

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 // Logic mirror of src/services/auth.ts for node:test runner
-const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
+const USERNAME_REGEX = /^[a-z0-9_]{2,20}$/;
 const INTERNAL_DOMAIN = '@naatyavedam.com';
 
 function usernameToEmail(username) {
@@ -12,7 +12,7 @@ function usernameToEmail(username) {
 function validateUsername(username) {
   const clean = username.toLowerCase().trim();
   if (!clean) return { isValid: false, error: 'Username is required.' };
-  if (clean.length < 3) return { isValid: false, error: 'Username must be at least 3 characters long.' };
+  if (clean.length < 2) return { isValid: false, error: 'Username must be at least 2 characters long.' };
   if (clean.length > 20) return { isValid: false, error: 'Username cannot exceed 20 characters.' };
   if (!USERNAME_REGEX.test(clean)) {
     return {
@@ -43,13 +43,14 @@ function isValidResetCode(code) {
 
 test('Auth: Username Validation - Valid usernames', () => {
   assert.equal(validateUsername('veda').isValid, true);
+  assert.equal(validateUsername('sk').isValid, true);
   assert.equal(validateUsername('ananya_dance').isValid, true);
   assert.equal(validateUsername('kuchipudi_007').isValid, true);
   assert.equal(validateUsername('priya_r').isValid, true);
 });
 
 test('Auth: Username Validation - Reject invalid lengths', () => {
-  assert.equal(validateUsername('ab').isValid, false);
+  assert.equal(validateUsername('a').isValid, false);
   assert.equal(validateUsername('').isValid, false);
   assert.equal(validateUsername('this_username_is_way_too_long_for_system').isValid, false);
 });
@@ -95,3 +96,4 @@ test('Auth: Password Reset Code Format - 6 uppercase alphanumeric characters', (
   assert.equal(isValidResetCode('7A4F2C8'), false, 'too long');
   assert.equal(isValidResetCode('7A-4F2'), false, 'special chars rejected');
 });
+

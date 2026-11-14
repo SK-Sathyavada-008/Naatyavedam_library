@@ -180,7 +180,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
     setInitTeacherLoading(true);
     setError(null);
     try {
-      const result = await initializeTeacher('veda', 'naatyavedam', 'Guru Keerthana (Dance Teacher)');
+      const result = await initializeTeacher('veda', 'naatyavedam', 'Guru Veda');
       if (result.success) {
         setIsTeacherInitialized(true);
         setInitSuccessMessage('Teacher account initialized! Username: veda, Password: naatyavedam');
@@ -322,10 +322,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => handleQuickFill('ananya_dance', 'student123')}
+              onClick={() => handleQuickFill('sk', 'naatyavedam')}
               className="flex-1 py-1.5 px-2 rounded-lg bg-canvas-card border border-border text-xs text-charcoal font-medium hover:border-sage transition-colors"
             >
-              Student (ananya)
+              Student (sk)
             </button>
           </div>
 
@@ -418,7 +418,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <Input
                 label="Your Username"
                 type="text"
-                placeholder="e.g. ananya_dance"
+                placeholder="e.g. sk"
                 value={forgotUsername}
                 onChange={(e) => setForgotUsername(e.target.value.toLowerCase().trim())}
                 leftIcon={<User className="w-4 h-4" />}
@@ -428,7 +428,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <div className="p-2.5 rounded-lg bg-canvas-subtle border border-border text-xs text-charcoal-muted flex items-start gap-2">
                 <HelpCircle className="w-4 h-4 text-sage flex-shrink-0 mt-0.5" />
                 <span>
-                  After requesting, contact Guru Keerthana. The teacher will approve your request and give you a 6-character code.
+                  After requesting, contact Guru Veda. The teacher will approve your request and give you a 6-character code.
                 </span>
               </div>
 
@@ -466,7 +466,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
               <Input
                 label="Your Username"
                 type="text"
-                placeholder="e.g. ananya_dance"
+                placeholder="e.g. sk"
                 value={forgotUsername}
                 onChange={(e) => setForgotUsername(e.target.value.toLowerCase().trim())}
                 leftIcon={<User className="w-4 h-4" />}

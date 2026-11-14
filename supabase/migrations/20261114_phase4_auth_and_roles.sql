@@ -289,7 +289,7 @@ CREATE TRIGGER on_auth_user_created_profile
 CREATE OR REPLACE FUNCTION public.initialize_teacher_account(
   p_username TEXT,
   p_password TEXT,
-  p_full_name TEXT DEFAULT 'Guru Keerthana (Dance Teacher)'
+  p_full_name TEXT DEFAULT 'Guru Veda'
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -771,11 +771,153 @@ BEGIN
 END;
 $$;
 
+-- 9.8 Student Account Creation / Seed RPC (for initial student SK)
+CREATE OR REPLACE FUNCTION public.create_initial_student_account(
+  p_username TEXT,
+  p_password TEXT,
+  p_full_name TEXT DEFAULT 'SK'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+  v_user_id UUID;
+  v_email TEXT;
+  v_encrypted_pw TEXT;
+  v_clean_username TEXT;
+  v_existing_id UUID;
+BEGIN
+  v_clean_username := lower(trim(p_username));
+  v_email := v_clean_username || '@naatyavedam.com';
+
+  -- Check if already exists in profiles
+  SELECT id INTO v_existing_id FROM public.profiles WHERE username = v_clean_username;
+  IF v_existing_id IS NOT NULL THEN
+    RETURN jsonb_build_object(
+      'success', true,
+      'message', 'Student account already exists.',
+      'username', v_clean_username
+    );
+  END IF;
+
+  v_user_id := gen_random_uuid();
+  v_encrypted_pw := crypt(p_password, gen_salt('bf'));
+
+  -- Clean up any orphaned auth user with this email
+  DELETE FROM auth.users WHERE email = v_email;
+
+  -- Insert into auth.users with pre-confirmed email
+  INSERT INTO auth.users (
+    id,
+    instance_id,
+    aud,
+    role,
+    email,
+    encrypted_password,
+    email_confirmed_at,
+    raw_app_meta_data,
+    raw_user_meta_data,
+    created_at,
+    updated_at
+  ) VALUES (
+    v_user_id,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    v_email,
+    v_encrypted_pw,
+    now(),
+    jsonb_build_object('provider', 'email', 'providers', array['email']),
+    jsonb_build_object('username', v_clean_username, 'full_name', p_full_name),
+    now(),
+    now()
+  );
+
+  -- Insert identity
+  INSERT INTO auth.identities (
+    id,
+    user_id,
+    identity_data,
+    provider,
+    provider_id,
+    last_sign_in_at,
+    created_at,
+    updated_at
+  ) VALUES (
+    gen_random_uuid(),
+    v_user_id,
+    jsonb_build_object('sub', v_user_id::text, 'email', v_email),
+    'email',
+    v_email,
+    now(),
+    now(),
+    now()
+  );
+
+  -- Ensure profile is created as approved STUDENT
+  INSERT INTO public.profiles (
+    id,
+    username,
+    full_name,
+    role,
+    status,
+    created_at,
+    updated_at,
+    approved_at
+  ) VALUES (
+    v_user_id,
+    v_clean_username,
+    p_full_name,
+    'STUDENT',
+    'APPROVED',
+    now(),
+    now(),
+    now()
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    role = 'STUDENT',
+    status = 'APPROVED',
+    full_name = p_full_name,
+    approved_at = now();
+
+  -- Audit log
+  INSERT INTO public.audit_logs (
+    action,
+    target_user_id,
+    target_username,
+    details
+  ) VALUES (
+    'STUDENT_INITIALIZED',
+    v_user_id,
+    v_clean_username,
+    jsonb_build_object('username', v_clean_username, 'full_name', p_full_name)
+  );
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'message', 'Student account created successfully.',
+    'username', v_clean_username
+  );
+END;
+$$;
+
 -- ==============================================================================
--- 10. INITIALIZE DEFAULT TEACHER ACCOUNT (veda / naatyavedam)
+-- 10. INITIALIZE DEFAULT TEACHER AND STUDENT ACCOUNTS
 -- ==============================================================================
+
+-- Teacher: Guru Veda (username: veda, password: naatyavedam)
 SELECT public.initialize_teacher_account(
   'veda',
   'naatyavedam',
-  'Guru Keerthana (Dance Teacher)'
+  'Guru Veda'
 );
+
+-- Student: SK (username: sk, password: naatyavedam)
+SELECT public.create_initial_student_account(
+  'sk',
+  'naatyavedam',
+  'SK'
+);
+

@@ -451,7 +451,7 @@ export const App: React.FC = () => {
     const updatedUser: UserProfile = {
       ...user,
       role: newRole,
-      fullName: newRole === 'TEACHER' ? 'Guru Keerthana (Dance Teacher)' : `${user.username} (Student)`,
+      fullName: newRole === 'TEACHER' ? 'Guru Veda' : user.username === 'sk' ? 'SK' : `${user.username} (Student)`,
     };
     setUser(updatedUser);
     await setAppSetting('currentUser', updatedUser);

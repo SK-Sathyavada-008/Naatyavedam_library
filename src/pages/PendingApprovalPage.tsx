@@ -27,7 +27,7 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({
       if (refreshed && refreshed.status === 'APPROVED') {
         onApproved(refreshed);
       } else {
-        setStatusMessage('Your registration is still awaiting teacher approval. Please check with Guru Keerthana.');
+        setStatusMessage('Your registration is still awaiting teacher approval. Please check with Guru Veda.');
       }
     } catch {
       setStatusMessage('Unable to check approval status. Please verify your internet connection.');
@@ -91,3 +91,4 @@ export const PendingApprovalPage: React.FC<PendingApprovalPageProps> = ({
     </div>
   );
 };
+

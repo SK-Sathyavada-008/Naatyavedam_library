@@ -8,8 +8,8 @@ import { Song, UserProfile, ActivityLogEntry } from '../types';
 
 export const MOCK_TEACHER_USER: UserProfile = {
   id: 'teacher-001',
-  username: 'guru_keerthana',
-  fullName: 'Guru Keerthana (Dance Teacher)',
+  username: 'veda',
+  fullName: 'Guru Veda',
   role: 'TEACHER',
   status: 'APPROVED',
   createdAt: '2024-01-01T00:00:00Z',
@@ -17,8 +17,8 @@ export const MOCK_TEACHER_USER: UserProfile = {
 
 export const MOCK_STUDENT_USER: UserProfile = {
   id: 'student-001',
-  username: 'ananya_dance',
-  fullName: 'Ananya Rao (Student)',
+  username: 'sk',
+  fullName: 'SK',
   role: 'STUDENT',
   status: 'APPROVED',
   createdAt: '2024-03-15T00:00:00Z',
@@ -178,7 +178,7 @@ export const SAMPLE_ACTIVITY_LOGS: ActivityLogEntry[] = [
     songId: 'sample-song-8',
     songTitle: 'Angikam Bhuvanam Yasya',
     performedBy: 'teacher-001',
-    performedByName: 'Guru Keerthana',
+    performedByName: 'Guru Veda',
     timestamp: '2024-08-30T08:00:00Z',
   },
   {
@@ -187,7 +187,7 @@ export const SAMPLE_ACTIVITY_LOGS: ActivityLogEntry[] = [
     songId: 'sample-song-7',
     songTitle: 'Dhanashree Thillana',
     performedBy: 'teacher-001',
-    performedByName: 'Guru Keerthana',
+    performedByName: 'Guru Veda',
     timestamp: '2024-08-28T17:10:00Z',
   },
   {
@@ -196,7 +196,7 @@ export const SAMPLE_ACTIVITY_LOGS: ActivityLogEntry[] = [
     songId: 'sample-song-4',
     songTitle: 'Marakatha Mani Maya (Tarangam)',
     performedBy: 'student-001',
-    performedByName: 'Ananya Rao',
+    performedByName: 'SK',
     timestamp: '2024-08-21T09:30:00Z',
     details: 'Renamed from "Tarangam - Aarabi"',
   },

@@ -122,7 +122,7 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
               <Input
                 label="Full Name"
                 type="text"
-                placeholder="e.g. Ananya Rao"
+                placeholder="e.g. SK"
                 value={fullName}
                 onChange={(e) => {
                   setFullName(e.target.value);
@@ -134,14 +134,14 @@ export const RegisterPage: React.FC<RegisterPageProps> = ({ onNavigate }) => {
               <Input
                 label="Username"
                 type="text"
-                placeholder="e.g. ananya_dance"
+                placeholder="e.g. sk"
                 value={username}
                 onChange={(e) => {
                   setUsername(e.target.value.toLowerCase().trim());
                   setError(null);
                 }}
                 leftIcon={<User className="w-4 h-4" />}
-                helperText="3–20 lowercase letters, numbers, and underscores"
+                helperText="2–20 lowercase letters, numbers, and underscores"
                 autoCapitalize="none"
                 autoCorrect="off"
                 required
